@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ComponentPropsWithoutRef } from 'react';
 import {
   ChevronUp,
@@ -7,8 +7,9 @@ import {
   MessageSquareOff,
   MessageSquareText,
   Minimize,
+  PanelRightClose,
+  PanelRightOpen,
   Pause,
-  PictureInPicture2,
   Play,
   RotateCw,
   TriangleAlert,
@@ -40,6 +41,9 @@ interface Props {
   online?: number;
   danmakuEnabled: boolean;
   onToggleDanmaku: () => void;
+  /** 侧边弹幕面板是否已收起（仅窗口模式控制栏显示收起/展开键） */
+  danmakuPanelCollapsed?: boolean;
+  onToggleDanmakuPanel?: () => void;
   onRefresh?: () => void;
   onOpenExternal?: () => void;
   className?: string;
@@ -70,6 +74,7 @@ const toneStyles: Record<
 function ControlButton({
   tone,
   label,
+  testId,
   active = false,
   side = 'top',
   onClick,
@@ -77,6 +82,7 @@ function ControlButton({
 }: {
   tone: Tone;
   label: string;
+  testId?: string;
   active?: boolean;
   /** tooltip 方位，避免与音量浮出滑块等浮层重叠 */
   side?: 'top' | 'bottom' | 'left' | 'right';
@@ -87,6 +93,7 @@ function ControlButton({
     <Tooltip label={label} side={side}>
       <button
         type="button"
+        data-testid={testId}
         onClick={onClick}
         aria-label={label}
         aria-pressed={active}
@@ -142,6 +149,8 @@ export function LivePlayer({
   online,
   danmakuEnabled,
   onToggleDanmaku,
+  danmakuPanelCollapsed = false,
+  onToggleDanmakuPanel,
   onRefresh,
   onOpenExternal,
   className,
@@ -164,13 +173,50 @@ export function LivePlayer({
   const [menuOpen, setMenuOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
 
   stateRef.current = { qualities, qualityIndex, lineIndex };
 
-  const pipSupported =
-    typeof document !== 'undefined' &&
-    'pictureInPictureEnabled' in document &&
-    document.pictureInPictureEnabled;
+  // 画面框贴合流分辨率：容器里只保留视频实际显示区，黑边不占位
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) {
+      return;
+    }
+    const sync = (): void =>
+      setContainerSize((prev) =>
+        prev.width === el.clientWidth && prev.height === el.clientHeight
+          ? prev
+          : { width: el.clientWidth, height: el.clientHeight }
+      );
+    sync();
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const syncVideoSize = useCallback((): void => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      return;
+    }
+    setVideoSize((prev) =>
+      prev.width === video.videoWidth && prev.height === video.videoHeight
+        ? prev
+        : { width: video.videoWidth, height: video.videoHeight }
+    );
+  }, []);
+
+  const boxStyle = useMemo(() => {
+    const { width: cw, height: ch } = containerSize;
+    const { width: vw, height: vh } = videoSize;
+    if (!cw || !ch || !vw || !vh) {
+      return { width: '100%', height: '100%' };
+    }
+    const scale = Math.min(cw / vw, ch / vh);
+    return { width: Math.round(vw * scale), height: Math.round(vh * scale) };
+  }, [containerSize, videoSize]);
 
   const handleError = useCallback((message: string) => {
     const state = stateRef.current;
@@ -296,22 +342,6 @@ export function LivePlayer({
     }
   };
 
-  const togglePip = async (): Promise<void> => {
-    const video = videoRef.current;
-    if (!video) {
-      return;
-    }
-    try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture();
-      } else {
-        await video.requestPictureInPicture();
-      }
-    } catch {
-      // 忽略画中画不可用
-    }
-  };
-
   const currentQuality = qualities[qualityIndex];
   const currentUrls = (currentQuality?.data as string[] | undefined) ?? [];
   const VolumeIcon =
@@ -423,12 +453,6 @@ export function LivePlayer({
         )}
       </ControlButton>
 
-      {pipSupported && (
-        <ControlButton tone={tone} label="画中画" onClick={() => void togglePip()}>
-          <PictureInPicture2 className="size-4" />
-        </ControlButton>
-      )}
-
       <ControlButton
         tone={tone}
         label={isFullscreen ? '退出全屏' : '全屏'}
@@ -456,6 +480,21 @@ export function LivePlayer({
           </ControlButton>
         </>
       )}
+
+      {tone === 'docked' && onToggleDanmakuPanel && (
+        <ControlButton
+          tone={tone}
+          testId="danmaku-panel-toggle"
+          label={danmakuPanelCollapsed ? '展开弹幕面板' : '收起弹幕面板'}
+          onClick={onToggleDanmakuPanel}
+        >
+          {danmakuPanelCollapsed ? (
+            <PanelRightOpen className="size-4" />
+          ) : (
+            <PanelRightClose className="size-4" />
+          )}
+        </ControlButton>
+      )}
     </>
   );
 
@@ -466,8 +505,8 @@ export function LivePlayer({
         ref={containerRef}
         data-testid="live-player"
         className={cn(
-          'group/player relative min-h-0 flex-1 overflow-hidden rounded-md bg-black',
-          isFullscreen && 'h-full rounded-none',
+          'group/player relative min-h-0 flex-1 overflow-hidden',
+          isFullscreen && 'h-full bg-black',
           isFullscreen && (overlayShown ? 'cursor-default' : 'cursor-none')
         )}
         onMouseMove={isFullscreen && playing ? revealControls : undefined}
@@ -484,92 +523,110 @@ export function LivePlayer({
         }}
         onDoubleClick={toggleFullscreen}
       >
-        <video
-          ref={videoRef}
-          className="size-full object-contain"
-          autoPlay
-          playsInline
-          onPlay={() => setPlaying(true)}
-          onPause={() => setPlaying(false)}
-          onWaiting={() => setBuffering(true)}
-          onPlaying={() => setBuffering(false)}
-        />
-
-        {/* 弹幕覆盖层 */}
-        <div className="absolute inset-0 z-10">{children}</div>
-
-        {/* 缓冲指示 */}
-        {playing && buffering && !error && (
-          <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
-            <span className="flex size-10 items-center justify-center rounded-full bg-black/60">
-              <RotateCw className="size-4 animate-spin-slow text-white/90" />
-            </span>
-          </div>
-        )}
-
-        {/* 首次加载 */}
-        {!playing && !error && detail.status && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black">
-            {detail.cover && (
-              <img
-                src={detail.cover}
-                alt=""
-                className="absolute inset-0 size-full object-cover opacity-15"
-              />
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div
+            style={boxStyle}
+            className={cn(
+              'relative overflow-hidden bg-black',
+              !isFullscreen && 'rounded-md'
             )}
-            <Spinner label="正在连接直播流…" className="relative z-10 text-ink-2" />
-          </div>
-        )}
+          >
+            <video
+              ref={videoRef}
+              className="size-full object-contain"
+              autoPlay
+              playsInline
+              onLoadedMetadata={syncVideoSize}
+              onResize={syncVideoSize}
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
+              onWaiting={() => setBuffering(true)}
+              onPlaying={() => setBuffering(false)}
+            />
 
-        {/* 未开播 */}
-        {!detail.status && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black">
-            {detail.cover && (
-              <img
-                src={detail.cover}
-                alt=""
-                className="absolute inset-0 size-full object-cover opacity-20"
-              />
-            )}
-            <p className="relative z-10 text-body font-medium text-ink-2">
-              主播暂未开播
-            </p>
-            <p className="relative z-10 text-caption text-ink-3">
-              开播后重新进入即可观看
-            </p>
-            {onRefresh && (
-              <Button
-                variant="secondary"
-                size="sm"
-                className="relative z-10 mt-2"
-                onClick={onRefresh}
-              >
-                <RotateCw className="size-3.5" strokeWidth={2} />
-                刷新状态
-              </Button>
-            )}
-          </div>
-        )}
+            {/* 弹幕覆盖层 */}
+            <div className="absolute inset-0 z-10">{children}</div>
 
-        {/* 播放错误 */}
-        {error && (
-          <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/75 px-6 text-center">
-            <TriangleAlert className="size-6 text-warning" strokeWidth={1.75} />
-            <p className="max-w-[46ch] text-label text-ink-2">{error}</p>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => {
-                retryRef.current = 0;
-                setError('');
-                controllerRef.current?.reload();
-              }}
-            >
-              <RotateCw className="size-3.5" strokeWidth={2} />
-              重新连接
-            </Button>
+            {/* 缓冲指示 */}
+            {playing && buffering && !error && (
+              <div className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center">
+                <span className="flex size-10 items-center justify-center rounded-full bg-black/60">
+                  <RotateCw className="size-4 animate-spin-slow text-white/90" />
+                </span>
+              </div>
+            )}
+
+            {/* 首次加载 */}
+            {!playing && !error && detail.status && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black">
+                {detail.cover && (
+                  <img
+                    src={detail.cover}
+                    alt=""
+                    className="absolute inset-0 size-full object-cover opacity-15"
+                  />
+                )}
+                <Spinner
+                  label="正在连接直播流…"
+                  className="relative z-10 text-ink-2"
+                />
+              </div>
+            )}
+
+            {/* 未开播 */}
+            {!detail.status && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-black">
+                {detail.cover && (
+                  <img
+                    src={detail.cover}
+                    alt=""
+                    className="absolute inset-0 size-full object-cover opacity-20"
+                  />
+                )}
+                <p className="relative z-10 text-body font-medium text-ink-2">
+                  主播暂未开播
+                </p>
+                <p className="relative z-10 text-caption text-ink-3">
+                  开播后重新进入即可观看
+                </p>
+                {onRefresh && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="relative z-10 mt-2"
+                    onClick={onRefresh}
+                  >
+                    <RotateCw className="size-3.5" strokeWidth={2} />
+                    刷新状态
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* 播放错误 */}
+            {error && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black/75 px-6 text-center">
+                <TriangleAlert
+                  className="size-6 text-warning"
+                  strokeWidth={1.75}
+                />
+                <p className="max-w-[46ch] text-label text-ink-2">{error}</p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => {
+                    retryRef.current = 0;
+                    setError('');
+                    controllerRef.current?.reload();
+                  }}
+                >
+                  <RotateCw className="size-3.5" strokeWidth={2} />
+                  重新连接
+                </Button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
 
         {/* 全屏浮层：顶部信息 + 底部控制 */}
         {isFullscreen && (

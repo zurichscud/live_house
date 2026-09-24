@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Users } from 'lucide-react';
 import { FollowingPanel } from '@/components/FollowingPanel';
-import { PlatformTabs } from '@/components/PlatformTabs';
+import { PlatformTabs, type PlatformTabId } from '@/components/PlatformTabs';
 import { EmptyState } from '@/components/ui/empty-state';
 import { cn } from '@/lib/cn';
-import { DEFAULT_SITE, getSite, type SiteId } from '@/lib/sites';
+import { DEFAULT_SITE, getSite } from '@/lib/sites';
 
 /** 我的：按平台查看关注列表（当前仅抖音已开发） */
 export function MinePage(): React.JSX.Element {
-  const [activeSite, setActiveSite] = useState<SiteId>(DEFAULT_SITE);
+  const [activeSite, setActiveSite] = useState<PlatformTabId>(DEFAULT_SITE);
   const site = getSite(activeSite);
 
   return (
@@ -42,7 +42,8 @@ export function MinePage(): React.JSX.Element {
       {!site?.following && (
         <main className="min-h-0 flex-1 overflow-y-auto">
           <EmptyState
-            icon={site?.icon ?? Users}
+            icon={Users}
+            iconSrc={site?.icon}
             title={`${site?.name ?? '该平台'}关注列表还在开发中`}
             description={`开发完成后，${site?.shortName ?? '该平台'}的关注列表会显示在这里`}
           />

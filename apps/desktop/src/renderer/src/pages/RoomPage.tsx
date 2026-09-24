@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, RotateCw, Star, TriangleAlert } from 'lucide-react';
+import { ChevronLeft, PanelRightOpen, RotateCw, Star, TriangleAlert } from 'lucide-react';
 import type {
   LivePlayQuality,
   LiveRoomDetail,
@@ -18,7 +18,12 @@ import { errorMessage } from '@/lib/error';
 import { isFavorited, toggleFavorite } from '@/lib/favorites';
 import { formatOnline } from '@/lib/format';
 import { addWatchHistory } from '@/lib/history';
-import { getDanmakuEnabled, saveDanmakuEnabled } from '@/lib/player-prefs';
+import {
+  getDanmakuCollapsed,
+  getDanmakuEnabled,
+  saveDanmakuCollapsed,
+  saveDanmakuEnabled
+} from '@/lib/player-prefs';
 import { DEFAULT_SITE, isSiteId } from '@/lib/sites';
 import { useDanmaku } from '@/hooks/useDanmaku';
 
@@ -31,6 +36,7 @@ export function RoomPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [danmakuEnabled, setDanmakuEnabled] = useState(getDanmakuEnabled);
+  const [danmakuCollapsed, setDanmakuCollapsed] = useState(getDanmakuCollapsed);
   const [refreshKey, setRefreshKey] = useState(0);
   const [favorited, setFavorited] = useState(false);
   const danmaku = useDanmaku();
@@ -89,7 +95,7 @@ export function RoomPage() {
     () =>
       danmaku.chatItems.map((item) => ({
         id: item.id,
-        text: `${item.userName}: ${item.message}`
+        text: item.message
       })),
     [danmaku.chatItems]
   );
@@ -112,6 +118,12 @@ export function RoomPage() {
     saveDanmakuEnabled(next);
   };
 
+  const handleToggleDanmakuPanel = (): void => {
+    const next = !danmakuCollapsed;
+    setDanmakuCollapsed(next);
+    saveDanmakuCollapsed(next);
+  };
+
   const handleToggleFavorite = (): void => {
     if (!detail) {
       return;
@@ -129,77 +141,77 @@ export function RoomPage() {
   return (
     <div className="flex h-full flex-col">
       <div className="flex min-h-0 flex-1">
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5 p-3">
-          {/* 房间标题 + 返回（播放器上方） */}
-          <div className="flex shrink-0 items-center gap-2">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2.5 p-3 pt-12">
+          {/* 返回 + 直播信息（播放器上方） */}
+          <div className="flex shrink-0 items-center gap-3 px-0.5">
             <Tooltip label="返回">
               <button
                 type="button"
                 data-testid="room-back"
                 onClick={goBack}
                 aria-label="返回"
-                className="flex size-8 shrink-0 items-center justify-center rounded-sm text-ink-2 transition-colors duration-150 ease-out-expo hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
+                className="-ml-1.5 flex size-8 shrink-0 items-center justify-center rounded-sm text-ink-2 transition-colors duration-150 ease-out-expo hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
               >
                 <ChevronLeft className="size-5" strokeWidth={1.75} />
               </button>
             </Tooltip>
-            <h1
-              data-testid="room-title"
-              className="min-w-0 flex-1 truncate pr-0.5 text-title font-semibold text-ink"
-            >
-              {detail ? detail.title : `直播间 ${roomId}`}
-            </h1>
+            {detail ? (
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                {detail.userAvatar ? (
+                  <img
+                    src={detail.userAvatar}
+                    alt=""
+                    className="size-10 shrink-0 rounded-full bg-raised object-cover"
+                  />
+                ) : (
+                  <Skeleton className="size-10 shrink-0 rounded-full" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-label font-medium text-ink">
+                    {detail.userName}
+                  </p>
+                  <p className="tnum mt-0.5 truncate text-caption text-ink-3">
+                    {formatOnline(liveOnline)} 人气 · 房间号 {detail.roomId}
+                  </p>
+                </div>
+                <Tooltip label={favorited ? '取消收藏' : '收藏该博主'}>
+                  <Button
+                    variant={favorited ? 'secondary' : 'ghost'}
+                    size="sm"
+                    data-testid="room-favorite"
+                    aria-pressed={favorited}
+                    onClick={handleToggleFavorite}
+                    className="shrink-0"
+                  >
+                    <Star
+                      className={cn('size-3.5', favorited && 'fill-current')}
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                    {favorited ? '已收藏' : '收藏'}
+                  </Button>
+                </Tooltip>
+              </div>
+            ) : (
+              loading && (
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <Skeleton className="size-10 shrink-0 rounded-full" />
+                  <div className="flex flex-col gap-1.5">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-48" />
+                  </div>
+                </div>
+              )
+            )}
           </div>
 
-          {/* 直播信息（播放器上方） */}
-          {detail ? (
-            <div className="flex shrink-0 items-center gap-3 px-0.5">
-              {detail.userAvatar ? (
-                <img
-                  src={detail.userAvatar}
-                  alt=""
-                  className="size-10 shrink-0 rounded-full bg-raised object-cover"
-                />
-              ) : (
-                <Skeleton className="size-10 shrink-0 rounded-full" />
-              )}
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-label font-medium text-ink">
-                  {detail.userName}
-                </p>
-                <p className="tnum mt-0.5 truncate text-caption text-ink-3">
-                  {formatOnline(liveOnline)} 人气 · 房间号 {detail.roomId}
-                </p>
-              </div>
-              <Tooltip label={favorited ? '取消收藏' : '收藏该博主'}>
-                <Button
-                  variant={favorited ? 'secondary' : 'ghost'}
-                  size="sm"
-                  data-testid="room-favorite"
-                  aria-pressed={favorited}
-                  onClick={handleToggleFavorite}
-                  className="shrink-0"
-                >
-                  <Star
-                    className={cn('size-3.5', favorited && 'fill-current')}
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                  {favorited ? '已收藏' : '收藏'}
-                </Button>
-              </Tooltip>
-            </div>
-          ) : (
-            loading && (
-              <div className="flex shrink-0 items-center gap-3 px-0.5">
-                <Skeleton className="size-10 shrink-0 rounded-full" />
-                <div className="flex flex-col gap-1.5">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-3 w-48" />
-                </div>
-              </div>
-            )
-          )}
+          {/* 房间标题（播放器上方） */}
+          <h1
+            data-testid="room-title"
+            className="min-w-0 shrink-0 truncate px-0.5 text-title font-semibold text-ink"
+          >
+            {detail ? detail.title : `直播间 ${roomId}`}
+          </h1>
 
           {/* 播放器 + 操作栏 */}
           {canPlay && detail ? (
@@ -210,6 +222,8 @@ export function RoomPage() {
               online={liveOnline}
               danmakuEnabled={danmakuEnabled}
               onToggleDanmaku={handleToggleDanmaku}
+              danmakuPanelCollapsed={danmakuCollapsed}
+              onToggleDanmakuPanel={handleToggleDanmakuPanel}
               onRefresh={() => setRefreshKey((key) => key + 1)}
               onOpenExternal={() => window.open(detail.url, '_blank')}
             >
@@ -245,12 +259,37 @@ export function RoomPage() {
           )}
         </div>
 
-        <aside className="flex w-[320px] shrink-0 flex-col border-l border-line xl:w-[340px]">
-          <DanmakuList
-            items={danmaku.chatItems}
-            status={danmaku.status}
-            online={liveOnline}
-          />
+        <aside
+          className={cn(
+            'flex shrink-0 flex-col border-l border-line',
+            danmakuCollapsed ? 'w-11' : 'w-[320px] xl:w-[340px]'
+          )}
+        >
+          {danmakuCollapsed ? (
+            <Tooltip label="展开弹幕" side="left">
+              <button
+                type="button"
+                data-testid="danmaku-expand"
+                onClick={handleToggleDanmakuPanel}
+                aria-label="展开弹幕"
+                className="flex h-full w-full flex-col items-center gap-3 py-4 text-ink-3 transition-colors duration-150 ease-out-expo hover:bg-raised/40 hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+              >
+                <PanelRightOpen className="size-4 shrink-0" strokeWidth={1.75} />
+                <span className="text-caption [writing-mode:vertical-rl]">
+                  弹幕
+                </span>
+                <span className="tnum text-caption [writing-mode:vertical-rl]">
+                  {formatOnline(liveOnline)} 人在看
+                </span>
+              </button>
+            </Tooltip>
+          ) : (
+            <DanmakuList
+              items={danmaku.chatItems}
+              status={danmaku.status}
+              online={liveOnline}
+            />
+          )}
         </aside>
       </div>
     </div>

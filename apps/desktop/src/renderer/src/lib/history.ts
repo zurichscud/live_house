@@ -55,10 +55,12 @@ export function removeWatchHistory(platform: SiteId, roomId: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
-export function clearWatchHistory(platform: SiteId): void {
-  const list = getWatchHistory().filter(
-    (entry) => entry.platform !== platform
-  );
+/** 清空观看记录：传平台只清该平台，传 'all' 或不传则全清 */
+export function clearWatchHistory(platform?: SiteId | 'all'): void {
+  const list =
+    platform && platform !== 'all'
+      ? getWatchHistory().filter((entry) => entry.platform !== platform)
+      : [];
   if (list.length === 0) {
     localStorage.removeItem(STORAGE_KEY);
     return;

@@ -3,6 +3,7 @@
 const VOLUME_KEY = 'live-house:player-volume';
 const MUTED_KEY = 'live-house:player-muted';
 const DANMAKU_KEY = 'live-house:player-danmaku';
+const DANMAKU_COLLAPSED_KEY = 'live-house:danmaku-collapsed';
 
 export const DEFAULT_PLAYER_VOLUME = 0.8;
 
@@ -58,6 +59,23 @@ export function getDanmakuEnabled(): boolean {
 export function saveDanmakuEnabled(enabled: boolean): void {
   try {
     localStorage.setItem(DANMAKU_KEY, enabled ? '1' : '0');
+  } catch {
+    // 忽略写入失败
+  }
+}
+
+/** 侧边弹幕列表是否收起（默认展开） */
+export function getDanmakuCollapsed(): boolean {
+  try {
+    return localStorage.getItem(DANMAKU_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function saveDanmakuCollapsed(collapsed: boolean): void {
+  try {
+    localStorage.setItem(DANMAKU_COLLAPSED_KEY, collapsed ? '1' : '0');
   } catch {
     // 忽略写入失败
   }

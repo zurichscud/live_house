@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ChevronDown, ChevronRight, Search, Users } from 'lucide-react';
+import logo from '@/assets/logo.png';
 import { Dropdown } from '@/components/ui/dropdown';
+import { PlatformIcon } from '@/components/PlatformIcon';
 import { errorMessage } from '@/lib/error';
 import { parseRoomInput } from '@/lib/format';
 import {
@@ -14,10 +16,9 @@ import { DEFAULT_SITE, getSite, SITES, type SiteId, type SiteInfo } from '@/lib/
 
 /** 搜索框内的平台选项（未开发平台不可选） */
 function SiteMenuItem({ site }: { site: SiteInfo }): React.JSX.Element {
-  const Icon = site.icon;
   return (
     <span className="flex items-center gap-2">
-      <Icon className="size-3.5" strokeWidth={1.75} aria-hidden />
+      <PlatformIcon site={site} className="size-3.5" />
       {site.name}
       {!site.available && (
         <span className="rounded-full border border-line px-1.5 text-micro leading-4 text-ink-3">
@@ -129,7 +130,6 @@ export function HomePage(): React.JSX.Element {
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
   const site = getSite(siteId) ?? getSite(DEFAULT_SITE);
-  const SiteIcon = site?.icon ?? Search;
 
   useEffect(() => {
     const handler = (event: KeyboardEvent): void => {
@@ -162,6 +162,16 @@ export function HomePage(): React.JSX.Element {
       <div className="mx-auto flex w-full max-w-[900px] flex-col gap-6 px-6 py-10">
         <h1 className="sr-only">首页</h1>
 
+        {/* 品牌 hero：巨大 logo + 应用名 */}
+        <div className="flex flex-col items-center gap-6 pb-2 pt-4">
+          <img
+            src={logo}
+            alt=""
+            className="size-52 rounded-[28px] ring-1 ring-line"
+          />
+          <p className="text-hero font-semibold text-ink">LIVE HOUSE</p>
+        </div>
+
         {/* 大号搜索框：左侧选择平台 */}
         <div className="flex h-12 items-center gap-1 rounded-md border border-line bg-surface pl-1.5 pr-3 transition-colors duration-150 ease-out-expo focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25">
           <Dropdown
@@ -176,7 +186,7 @@ export function HomePage(): React.JSX.Element {
                 aria-label={`搜索平台：${site?.name ?? ''}`}
                 className="flex h-9 shrink-0 items-center gap-1.5 rounded-sm px-2.5 text-label font-medium text-ink-2 transition-colors duration-150 ease-out-expo hover:bg-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-accent"
               >
-                <SiteIcon className="size-4" strokeWidth={1.75} aria-hidden />
+                <PlatformIcon site={site} fallback={Search} className="size-4" />
                 {site?.shortName}
                 <ChevronDown
                   className="size-3.5 text-ink-3"

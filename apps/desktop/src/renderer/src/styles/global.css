@@ -46,6 +46,9 @@
   --text-display: 1.25rem;
   --text-display--line-height: 1.3;
   --text-display--letter-spacing: -0.01em;
+  --text-hero: 2.5rem;
+  --text-hero--line-height: 1.15;
+  --text-hero--letter-spacing: -0.02em;
 
   /* Radii */
   --radius-sm: 6px;

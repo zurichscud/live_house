@@ -4,6 +4,7 @@ import { Clock, RotateCw, Star, X } from 'lucide-react';
 import { LiveBadge } from '@/components/Status';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
+import { PlatformIcon } from '@/components/PlatformIcon';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip } from '@/components/ui/tooltip';
 import { liveStatusKey, useLiveStatuses } from '@/hooks/useLiveStatuses';
@@ -59,7 +60,6 @@ export function FavoritesPage(): React.JSX.Element {
         ) : (
           items.map((item) => {
             const site = getSite(item.platform) ?? getSite(DEFAULT_SITE);
-            const PlatformIcon = site?.icon ?? Star;
             const status = statuses[liveStatusKey(item.platform, item.roomId)];
             return (
               <div
@@ -94,11 +94,7 @@ export function FavoritesPage(): React.JSX.Element {
                         data-testid="favorite-platform"
                         className="inline-flex shrink-0 items-center gap-1 rounded-full bg-raised px-1.5 py-px text-micro font-medium text-ink-2"
                       >
-                        <PlatformIcon
-                          className="size-3"
-                          strokeWidth={1.75}
-                          aria-hidden
-                        />
+                        <PlatformIcon site={site} fallback={Star} className="size-3" />
                         {site?.shortName ?? '未知平台'}
                       </span>
                       <span className="tnum flex shrink-0 items-center gap-1">

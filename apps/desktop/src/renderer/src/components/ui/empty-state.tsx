@@ -4,6 +4,8 @@ import { cn } from '@/lib/cn';
 
 interface EmptyStateProps {
   icon: LucideIcon;
+  /** 图片图标（平台品牌图标等），给了就替代 icon */
+  iconSrc?: string;
   title: string;
   description?: string;
   action?: ReactNode;
@@ -12,6 +14,7 @@ interface EmptyStateProps {
 
 export function EmptyState({
   icon: Icon,
+  iconSrc,
   title,
   description,
   action,
@@ -24,7 +27,11 @@ export function EmptyState({
         className
       )}
     >
-      <Icon className="size-8 text-ink-3" strokeWidth={1.5} aria-hidden />
+      {iconSrc ? (
+        <img src={iconSrc} alt="" aria-hidden className="size-8 object-contain" />
+      ) : (
+        <Icon className="size-8 text-ink-3" strokeWidth={1.5} aria-hidden />
+      )}
       <p className="mt-1 text-body font-medium text-ink-2">{title}</p>
       {description && (
         <p className="max-w-[42ch] text-label text-ink-3">{description}</p>

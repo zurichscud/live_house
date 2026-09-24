@@ -81,7 +81,7 @@ export function Sidebar(): React.JSX.Element {
   };
 
   return (
-    <aside className="flex w-[212px] shrink-0 flex-col overflow-y-auto border-r border-line bg-surface px-2 py-3">
+    <aside className="flex w-max shrink-0 flex-col overflow-y-auto border-r border-line bg-surface px-2 py-3">
       <div className="flex items-center gap-2 px-2">
         <img
           src={appIcon}

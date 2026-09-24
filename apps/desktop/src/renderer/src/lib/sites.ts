@@ -1,6 +1,7 @@
-import { Gamepad2, Music2, Tv } from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
 import type { SiteId } from '@live-house/core';
+import bilibiliIcon from '@/assets/platform/bilibili.svg';
+import douyinIcon from '@/assets/platform/douyin.svg';
+import huyaIcon from '@/assets/platform/huya.svg';
 
 export type { SiteId };
 
@@ -10,7 +11,8 @@ export interface SiteInfo {
   name: string;
   /** 短名称（tab / 下拉 / 列表徽章等窄空间） */
   shortName: string;
-  icon: LucideIcon;
+  /** 平台品牌图标（assets/platform 下的 SVG 资源 URL） */
+  icon: string;
   /** 已接入：可搜索、可进房播放 */
   available: boolean;
   /** 支持账号「关注列表」（我的页） */
@@ -22,7 +24,7 @@ export const SITES: SiteInfo[] = [
     id: 'douyin',
     name: '抖音直播',
     shortName: '抖音',
-    icon: Music2,
+    icon: douyinIcon,
     available: true,
     following: true
   },
@@ -30,7 +32,7 @@ export const SITES: SiteInfo[] = [
     id: 'bilibili',
     name: '哔哩哔哩',
     shortName: 'B站',
-    icon: Tv,
+    icon: bilibiliIcon,
     available: true,
     following: false
   },
@@ -38,7 +40,7 @@ export const SITES: SiteInfo[] = [
     id: 'huya',
     name: '虎牙直播',
     shortName: '虎牙',
-    icon: Gamepad2,
+    icon: huyaIcon,
     available: true,
     following: false
   }

@@ -9,7 +9,8 @@ import {
   UserRound,
   X
 } from 'lucide-react';
-import { PlatformTabs } from '@/components/PlatformTabs';
+import { PlatformTabs, type PlatformTabId } from '@/components/PlatformTabs';
+import { PlatformIcon } from '@/components/PlatformIcon';
 import { LiveBadge } from '@/components/Status';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -23,21 +24,26 @@ import {
   type WatchHistoryItem
 } from '@/lib/history';
 import { formatRelativeTime } from '@/lib/format';
-import { DEFAULT_SITE, getSite, type SiteId } from '@/lib/sites';
+import { DEFAULT_SITE, getSite } from '@/lib/sites';
 
 export function HistoryPage() {
   const navigate = useNavigate();
-  const [activeSite, setActiveSite] = useState<SiteId>(DEFAULT_SITE);
+  const [activeSite, setActiveSite] = useState<PlatformTabId>('all');
   const [items, setItems] = useState<WatchHistoryItem[]>(() =>
     getWatchHistory()
   );
   const listRef = useRef<HTMLElement>(null);
 
-  const site = getSite(activeSite);
+  const site = activeSite === 'all' ? undefined : getSite(activeSite);
   const visibleItems = useMemo(
-    () => items.filter((item) => item.platform === activeSite),
+    () =>
+      activeSite === 'all'
+        ? items
+        : items.filter((item) => item.platform === activeSite),
     [items, activeSite]
   );
+  /** 直播状态只有抖音可查：全部 / 抖音 tab 下才展示检查入口 */
+  const statusCheckable = activeSite === 'all' || activeSite === 'douyin';
 
   const { statuses: liveMap, checking, refresh } = useLiveStatuses(items);
 
@@ -67,7 +73,7 @@ export function HistoryPage() {
             </span>
           )}
         </h1>
-        {activeSite === 'douyin' && visibleItems.length > 0 && (
+        {statusCheckable && visibleItems.length > 0 && (
           <Tooltip label="刷新直播状态">
               <Button
                 variant="ghost"
@@ -93,14 +99,15 @@ export function HistoryPage() {
         )}
       </div>
 
-      {/* 平台 tab：切换后只显示该平台的观看记录 */}
+      {/* 平台 tab：切换后只显示该平台的观看记录，「全部」按时间倒序汇总 */}
       <div className="flex shrink-0 items-center gap-3 px-5 pt-3">
         <PlatformTabs
           value={activeSite}
           onChange={setActiveSite}
           testIdPrefix="history-tab"
+          includeAll
         />
-        {checking && activeSite === 'douyin' && (
+        {checking && statusCheckable && (
           <Spinner label="正在检查直播状态…" />
         )}
       </div>
@@ -112,21 +119,25 @@ export function HistoryPage() {
         {visibleItems.length === 0 ? (
           site && !site.available ? (
             <EmptyState
-              icon={site.icon}
+              icon={History}
+              iconSrc={site.icon}
               title={`${site.name}还在开发中`}
               description={`开发完成后，${site.shortName}的观看记录会显示在这里`}
             />
           ) : (
             <EmptyState
               icon={History}
-              title={`还没有${site?.shortName ?? ''}的观看记录`}
+              title={
+                activeSite === 'all'
+                  ? '还没有观看记录'
+                  : `还没有${site?.shortName ?? ''}的观看记录`
+              }
               description="进入过的直播间会出现在这里，方便下次快速回到"
             />
           )
         ) : (
           visibleItems.map((item) => {
             const site = getSite(item.platform) ?? getSite(DEFAULT_SITE);
-            const PlatformIcon = site?.icon ?? History;
             const status = liveMap[liveStatusKey(item.platform, item.roomId)];
             return (
               <div
@@ -164,11 +175,7 @@ export function HistoryPage() {
                         data-testid="history-platform"
                         className="inline-flex shrink-0 items-center gap-1 rounded-full bg-raised px-1.5 py-px text-micro font-medium text-ink-2"
                       >
-                        <PlatformIcon
-                          className="size-3"
-                          strokeWidth={1.75}
-                          aria-hidden
-                        />
+                        <PlatformIcon site={site} fallback={History} className="size-3" />
                         {site?.shortName ?? '未知平台'}
                       </span>
                       <span className="flex min-w-0 items-center gap-1">
