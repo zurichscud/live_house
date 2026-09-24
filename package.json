@@ -1,0 +1,29 @@
+{
+  "name": "live-house-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LIVE HOUSE 直播 PC 客户端（Electron + React）",
+  "scripts": {
+    "dev": "pnpm --filter @live-house/desktop dev",
+    "build": "pnpm --filter @live-house/desktop build",
+    "typecheck": "pnpm -r typecheck",
+    "verify:sign": "node scripts/verify-sign.mjs",
+    "verify:api": "node scripts/verify-api.mjs",
+    "verify:danmaku": "node scripts/verify-danmaku.mjs",
+    "verify:following": "node scripts/verify-following.mjs",
+    "verify:bilibili": "node scripts/verify-bilibili.mjs",
+    "verify:huya": "node scripts/verify-huya.mjs",
+    "e2e": "pnpm --filter @live-house/desktop build && node scripts/e2e-smoke.mjs",
+    "e2e:soak": "node scripts/e2e-soak.mjs",
+    "extract:sign": "node scripts/extract-sign-js.mjs",
+    "package:mac": "pnpm --filter @live-house/desktop package:mac",
+    "package:win": "pnpm --filter @live-house/desktop package:win"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "playwright": "^1.63.0"
+  }
+}

@@ -1,0 +1,246 @@
+@import 'tailwindcss';
+
+/* ------------------------------------------------------------------
+   Design tokens — DESIGN.md 为唯一事实来源（OKLCH）
+------------------------------------------------------------------ */
+@theme {
+  /* Surfaces */
+  --color-canvas: oklch(0.145 0.006 285);
+  --color-surface: oklch(0.19 0.008 285);
+  --color-raised: oklch(0.235 0.009 285);
+  --color-line: oklch(0.29 0.011 285);
+  --color-line-strong: oklch(0.38 0.013 285);
+
+  /* Text */
+  --color-ink: oklch(0.96 0.002 285);
+  --color-ink-2: oklch(0.8 0.005 285);
+  --color-ink-3: oklch(0.66 0.008 285);
+
+  /* Primary (inverted button) */
+  --color-primary: oklch(0.96 0.002 285);
+  --color-primary-hover: oklch(1 0 0);
+  --color-primary-ink: oklch(0.145 0.006 285);
+
+  /* Brand accent (douyin red) — live states, focus, indicators only */
+  --color-accent: oklch(0.6 0.22 16);
+  --color-accent-hover: oklch(0.65 0.23 16);
+  --color-accent-text: oklch(0.75 0.15 16);
+  --color-accent-soft: oklch(0.25 0.06 16);
+
+  /* Semantic */
+  --color-live: oklch(0.8 0.19 150);
+  --color-warning: oklch(0.8 0.14 85);
+  --color-user: oklch(0.78 0.09 235);
+
+  /* Type scale (fixed rem, product) */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1.2;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.5;
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.4;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.6;
+  --text-title: 1rem;
+  --text-title--line-height: 1.4;
+  --text-display: 1.25rem;
+  --text-display--line-height: 1.3;
+  --text-display--letter-spacing: -0.01em;
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+
+  /* Motion */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+
+  /* Font */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Segoe UI',
+    'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+}
+
+/* ------------------------------------------------------------------
+   亮色主题：覆盖同一组语义变量，所有工具类自动跟随
+   （色板与对比度校验见 DESIGN.md；ink-3 取 L=0.51 以满足 raised 底 4.5:1）
+------------------------------------------------------------------ */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --color-canvas: oklch(0.965 0.003 285);
+  --color-surface: oklch(0.995 0.002 285);
+  --color-raised: oklch(0.93 0.005 285);
+  --color-line: oklch(0.885 0.006 285);
+  --color-line-strong: oklch(0.75 0.008 285);
+
+  --color-ink: oklch(0.22 0.01 285);
+  --color-ink-2: oklch(0.44 0.01 285);
+  --color-ink-3: oklch(0.51 0.012 285);
+
+  --color-primary: oklch(0.25 0.01 285);
+  --color-primary-hover: oklch(0.33 0.012 285);
+  --color-primary-ink: oklch(0.99 0.002 285);
+
+  --color-accent: oklch(0.55 0.22 16);
+  --color-accent-hover: oklch(0.5 0.21 16);
+  --color-accent-text: oklch(0.5 0.2 16);
+  --color-accent-soft: oklch(0.94 0.035 16);
+
+  --color-live: oklch(0.6 0.16 150);
+  --color-warning: oklch(0.62 0.13 85);
+  --color-user: oklch(0.5 0.12 240);
+}
+
+/* Semantic z-index ladder */
+@layer base {
+  :root {
+    color-scheme: dark;
+    --z-sticky: 20;
+    --z-dropdown: 30;
+    --z-modal-backdrop: 40;
+    --z-modal: 50;
+    --z-toast: 60;
+    --z-tooltip: 70;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+
+  /* Numerals never jitter */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Focus: visible, consistent, accent */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* 文本输入自带 border + ring 焦点态，避免双层红色指示 */
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: none;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  input,
+  textarea {
+    font-family: inherit;
+  }
+
+  /* Drag regions for the frameless window chrome */
+  .drag-region {
+    -webkit-app-region: drag;
+  }
+
+  .no-drag {
+    -webkit-app-region: no-drag;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------
+   Motion primitives
+------------------------------------------------------------------ */
+@keyframes pulse-live {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-live-dot {
+  animation: pulse-live 1.6s var(--ease-out-expo) infinite;
+}
+
+.animate-fade-in {
+  animation: fade-in var(--duration-base) var(--ease-out-expo);
+}
+
+.animate-scale-in {
+  animation: scale-in var(--duration-base) var(--ease-out-expo);
+}
+
+.animate-spin-slow {
+  animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-live-dot {
+    animation: none;
+  }
+}

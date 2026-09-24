@@ -1,0 +1,29 @@
+{
+  "name": "@live-house/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "LIVE HOUSE 直播核心库（抖音 / 哔哩哔哩 / 虎牙 接口与弹幕协议）",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/ws": "^8.18.1",
+    "protobufjs-cli": "^2.7.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "pako": "^3.0.2",
+    "protobufjs": "^8.8.0",
+    "ws": "^8.21.3"
+  }
+}
