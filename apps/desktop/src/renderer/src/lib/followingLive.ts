@@ -1,8 +1,4 @@
-import type {
-  DouyinFollowingUser,
-  DouyinSelfInfo,
-  DouyinUserLiveStatus
-} from '@live-house/core';
+import type { DouyinFollowingUser, DouyinSelfInfo } from '@live-house/core';
 
 /** 首页看板的「关注直播」概览 */
 export interface FollowingLiveSummary {
@@ -30,19 +26,9 @@ export function getCachedFollowingLive(): FollowingLiveSummary | null {
   return null;
 }
 
-const countLive = (statuses: Map<string, DouyinUserLiveStatus>): number => {
-  let live = 0;
-  for (const status of statuses.values()) {
-    if (status.liveStatus) {
-      live += 1;
-    }
-  }
-  return live;
-};
-
 /**
- * 拉取关注列表并逐个统计直播状态（并发 3 + 250ms，见 main/following.ts）。
- * 结果缓存 3 分钟；未覆盖全部关注或被取消时不写缓存。
+ * 拉取关注列表并统计其中正在直播的人数（直播状态由列表接口直接带回）。
+ * 结果缓存 3 分钟；未覆盖全部关注时不写缓存。
  */
 export async function loadFollowingLiveSummary(
   onProgress: (live: number, checked: number) => void
@@ -69,33 +55,18 @@ export async function loadFollowingLiveSummary(
       users.push(...result.items);
       maxTime = result.minTime;
       more = result.hasMore && result.items.length > 0;
+      onProgress(users.filter((user) => user.liveStatus).length, users.length);
       if (more) {
         await new Promise((resolve) => setTimeout(resolve, PAGE_INTERVAL));
       }
     }
 
-    const statuses = new Map<string, DouyinUserLiveStatus>();
-    const off = window.api.following.onLiveStatus((status) => {
-      if (statuses.has(status.secUid)) {
-        return;
-      }
-      statuses.set(status.secUid, status);
-      onProgress(countLive(statuses), statuses.size);
-    });
-    try {
-      await window.api.following.checkLives(users.map((user) => user.secUid));
-      // 等状态事件收尾，避免结算时漏掉最后几条
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    } finally {
-      off();
-    }
-
     const summary: FollowingLiveSummary = {
       account,
       checked: users.length,
-      live: countLive(statuses),
-      // 关注列表被截断，或状态事件有缺失（被关注页取消）时不写缓存
-      complete: !more && statuses.size >= users.length
+      live: users.filter((user) => user.liveStatus).length,
+      // 关注列表被截断时不写缓存
+      complete: !more
     };
     if (summary.complete) {
       cached = { at: Date.now(), summary };

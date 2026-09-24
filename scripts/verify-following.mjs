@@ -54,15 +54,13 @@ if (first.items.length === 0) {
   process.exit(0);
 }
 
-console.log('\n=== 3. 直播状态（profile/other，前 3 个） ===');
+console.log('\n=== 3. 直播状态（列表接口自带 live_status / room_data） ===');
 for (const user of first.items.slice(0, 3)) {
-  const status = await site.getUserLiveStatus(user.secUid);
   console.log(
-    status.liveStatus
-      ? `✅ 直播中 · webRid=${status.webRid ? '有' : '无'} · 在线 ${status.online}`
+    user.liveStatus
+      ? `✅ 直播中 · webRid=${user.webRid ? '有' : '无'} · 在线 ${user.online}`
       : `✅ 未开播`
   );
-  await new Promise((resolve) => setTimeout(resolve, 300));
 }
 
 console.log('\n=== 4. 分页参数校验（max_time = 上一页 min_time） ===');

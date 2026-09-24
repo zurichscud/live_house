@@ -3,7 +3,6 @@ import type {
   DanmakuMessage,
   DouyinFollowingResult,
   DouyinSelfInfo,
-  DouyinUserLiveStatus,
   LiveCategoryResult,
   LivePlayQuality,
   LivePlayUrl,
@@ -69,14 +68,7 @@ const api = {
     getSelfInfo: (): Promise<DouyinSelfInfo> =>
       ipcRenderer.invoke('douyin:getSelfInfo'),
     getList: (secUid: string, maxTime = '0'): Promise<DouyinFollowingResult> =>
-      ipcRenderer.invoke('douyin:getFollowingList', secUid, maxTime),
-    checkLives: (secUids: string[]): Promise<void> =>
-      ipcRenderer.invoke('douyin:checkFollowLives', secUids),
-    cancelCheckLives: (): Promise<void> =>
-      ipcRenderer.invoke('douyin:cancelFollowLives'),
-    onLiveStatus: (
-      callback: (status: DouyinUserLiveStatus) => void
-    ): (() => void) => subscribe('following:live', callback)
+      ipcRenderer.invoke('douyin:getFollowingList', secUid, maxTime)
   },
   danmaku: {
     start: (site: SiteId, args: unknown): Promise<void> =>

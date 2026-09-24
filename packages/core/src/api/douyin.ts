@@ -15,7 +15,6 @@ import type {
   DouyinFollowingUser,
   DouyinSelfInfo,
   DouyinStreamUrl,
-  DouyinUserLiveStatus,
   LiveCategory,
   LiveCategoryResult,
   LivePlayQuality,
@@ -748,12 +747,15 @@ export class DouyinSite implements LiveSite {
       if (first.includes('__ac_nonce')) dyCookie += `${first};`;
     }
 
+    // 搜索必须带登录态：已登录用用户 Cookie，未登录只能带动态 ttwid（接口回 2483）
+    const searchCookie = this.cookie || dyCookie;
+
     const response = await this.http(uri.toString(), {
       headers: {
         Authority: 'www.douyin.com',
         accept: 'application/json, text/plain, */*',
         'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        cookie: dyCookie,
+        cookie: searchCookie,
         priority: 'u=1, i',
         referer: `https://www.douyin.com/search/${encodeURIComponent(keyword)}?type=live`,
         'sec-ch-ua':
@@ -774,6 +776,12 @@ export class DouyinSite implements LiveSite {
       status_msg?: string;
     };
     if (result.status_code !== undefined && result.status_code !== 0) {
+      // 2483 = 未登录：引导去设置页粘贴 Cookie，而不是抛出抖音原文
+      if (result.status_code === 2483) {
+        throw new Error(
+          '抖音搜索需要登录：请在「设置」中粘贴抖音 Cookie 后重试'
+        );
+      }
       throw new Error(
         `抖音搜索失败（${result.status_code}）：${result.status_msg ?? '未知错误'}`
       );
@@ -841,6 +849,12 @@ export class DouyinSite implements LiveSite {
     if (response.text === '' || response.text === 'blocked') {
       throw new Error('请求被抖音风控拦截，请稍后再试');
     }
+    if (response.text.trimStart().startsWith('<')) {
+      // 风控/登录页返回 HTML（如 444 Access Denied），直接抛可读错误
+      throw new Error(
+        `抖音接口被风控拦截（HTTP ${response.status}）：请稍后重试，或重新粘贴 Cookie`
+      );
+    }
     const json = JSON.parse(response.text) as T & {
       status_code?: number;
       status_msg?: string;
@@ -885,6 +899,8 @@ export class DouyinSite implements LiveSite {
   /**
    * 读取关注列表（单页，最多 20 条）
    * - 首页 maxTime 传 '0'；下一页传上一页返回的 minTime
+   * - 直播状态由本接口带回（live_status + room_data），不必再逐个查 profile/other
+   *   （该接口对非浏览器请求已风控：444 Access Denied）
    */
   async getFollowingList(
     secUid: string,
@@ -898,6 +914,9 @@ export class DouyinSite implements LiveSite {
         short_id?: string;
         follower_count?: number;
         avatar_thumb?: { url_list?: string[] };
+        live_status?: number;
+        room_id_str?: string;
+        room_data?: string | null;
       }>;
       has_more?: boolean | number | string;
       min_time?: string | number;
@@ -909,56 +928,41 @@ export class DouyinSite implements LiveSite {
       source_type: '1'
     });
     const items: DouyinFollowingUser[] = (json.followings ?? []).map(
-      (user) => ({
-        secUid: String(user.sec_uid ?? ''),
-        nickname: String(user.nickname ?? ''),
-        uniqueId: String(user.unique_id ?? user.short_id ?? ''),
-        avatar: firstUrl(user.avatar_thumb?.url_list),
-        followerCount: Number(user.follower_count ?? 0)
-      })
+      (user) => {
+        const liveStatus = (user.live_status ?? 0) === 1;
+        let webRid = '';
+        let online = 0;
+        if (user.room_data) {
+          try {
+            const roomData = JSON.parse(String(user.room_data)) as {
+              user_count?: number;
+              owner?: { web_rid?: string };
+            };
+            webRid = String(roomData.owner?.web_rid ?? '');
+            online = Number(roomData.user_count ?? 0);
+          } catch {
+            // room_data 解析失败按未开播处理
+          }
+        }
+        return {
+          secUid: String(user.sec_uid ?? ''),
+          nickname: String(user.nickname ?? ''),
+          uniqueId: String(user.unique_id ?? user.short_id ?? ''),
+          avatar: firstUrl(user.avatar_thumb?.url_list),
+          followerCount: Number(user.follower_count ?? 0),
+          liveStatus,
+          webRid,
+          // 未开播时接口会给 '0'，统一成空串
+          roomId: liveStatus ? String(user.room_id_str ?? '') : '',
+          online
+        };
+      }
     );
     return {
       items,
       hasMore:
         json.has_more === true || json.has_more === 1 || json.has_more === '1',
       minTime: String(json.min_time ?? '0')
-    };
-  }
-
-  /** 查询单个用户的实时直播状态（未开播时 webRid 为空） */
-  async getUserLiveStatus(secUid: string): Promise<DouyinUserLiveStatus> {
-    const json = await this.getWebJson<{
-      user?: {
-        live_status?: number;
-        room_id_str?: string;
-        room_data?: string | null;
-      };
-    }>('/aweme/v1/web/user/profile/other/', {
-      sec_user_id: secUid,
-      publish_video_strategy_type: '2'
-    });
-    const user = json.user ?? {};
-    let webRid = '';
-    let online = 0;
-    if (user.room_data) {
-      try {
-        const roomData = JSON.parse(String(user.room_data)) as {
-          status?: number;
-          user_count?: number;
-          owner?: { web_rid?: string };
-        };
-        webRid = String(roomData.owner?.web_rid ?? '');
-        online = Number(roomData.user_count ?? 0);
-      } catch {
-        // room_data 解析失败视为未开播
-      }
-    }
-    return {
-      secUid,
-      liveStatus: (user.live_status ?? 0) === 1,
-      webRid,
-      roomId: String(user.room_id_str ?? ''),
-      online
     };
   }
 

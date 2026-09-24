@@ -1,6 +1,5 @@
 import { BrowserWindow, ipcMain } from 'electron';
 import type { LivePlayQuality, LiveRoomDetail } from '@live-house/core';
-import { cancelFollowLives, checkFollowLives } from './following.js';
 import {
   douyinSite,
   getSite,
@@ -86,18 +85,6 @@ export function registerIpc(): void {
     (_event, secUid: string, maxTime: string) =>
       douyinSite().getFollowingList(secUid, maxTime)
   );
-
-  ipcMain.handle('douyin:checkFollowLives', async (event, secUids: string[]) => {
-    await checkFollowLives(secUids, (status) => {
-      if (!event.sender.isDestroyed()) {
-        event.sender.send('following:live', status);
-      }
-    });
-  });
-
-  ipcMain.handle('douyin:cancelFollowLives', () => {
-    cancelFollowLives();
-  });
 
   // ---- 弹幕（站点分发）----
 

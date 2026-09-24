@@ -1,11 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ExternalLink, RadioTower, RotateCw, Users } from 'lucide-react';
-import type {
-  DouyinFollowingUser,
-  DouyinSelfInfo,
-  DouyinUserLiveStatus
-} from '@live-house/core';
+import type { DouyinFollowingUser, DouyinSelfInfo } from '@live-house/core';
 import { InlineError } from '@/components/InlineError';
 import { LiveBadge } from '@/components/Status';
 import { Button } from '@/components/ui/button';
@@ -29,49 +25,16 @@ export function FollowingPanel(): React.JSX.Element {
   const [error, setError] = useState('');
   const [account, setAccount] = useState<DouyinSelfInfo | null>(null);
   const [users, setUsers] = useState<DouyinFollowingUser[]>([]);
-  const [liveMap, setLiveMap] = useState<
-    Record<string, DouyinUserLiveStatus>
-  >({});
-  const [checking, setChecking] = useState(false);
   const [liveOnly, setLiveOnly] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const minTimeRef = useRef('0');
-  const checkedRef = useRef<Set<string>>(new Set());
-
-  useEffect(() => {
-    const off = window.api.following.onLiveStatus((status) => {
-      setLiveMap((prev) => ({ ...prev, [status.secUid]: status }));
-    });
-    return () => {
-      off();
-      void window.api.following.cancelCheckLives();
-    };
-  }, []);
-
-  const checkLives = useCallback(async (list: DouyinFollowingUser[]) => {
-    const pending = list.filter((user) => !checkedRef.current.has(user.secUid));
-    if (pending.length === 0) {
-      return;
-    }
-    for (const user of pending) {
-      checkedRef.current.add(user.secUid);
-    }
-    setChecking(true);
-    try {
-      await window.api.following.checkLives(pending.map((user) => user.secUid));
-    } finally {
-      setChecking(false);
-    }
-  }, []);
 
   const load = useCallback(async () => {
     setState('loading');
     setError('');
     setUsers([]);
-    setLiveMap({});
     setHasMore(false);
-    checkedRef.current = new Set();
     try {
       const self = await window.api.following.getSelfInfo();
       setAccount(self);
@@ -92,12 +55,11 @@ export function FollowingPanel(): React.JSX.Element {
       minTimeRef.current = maxTime;
       setHasMore(more);
       setState('ready');
-      void checkLives(collected);
     } catch (e) {
       setError(errorMessage(e));
       setState('error');
     }
-  }, [checkLives]);
+  }, []);
 
   useEffect(() => {
     void load();
@@ -116,7 +78,6 @@ export function FollowingPanel(): React.JSX.Element {
       minTimeRef.current = result.minTime;
       setHasMore(result.hasMore && result.items.length > 0);
       setUsers((prev) => [...prev, ...result.items]);
-      void checkLives(result.items);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -124,17 +85,14 @@ export function FollowingPanel(): React.JSX.Element {
     }
   };
 
-  const liveCount = users.filter(
-    (user) => liveMap[user.secUid]?.liveStatus
-  ).length;
+  const liveCount = users.filter((user) => user.liveStatus).length;
   const visible = liveOnly
-    ? users.filter((user) => liveMap[user.secUid]?.liveStatus)
+    ? users.filter((user) => user.liveStatus)
     : users;
 
   const openUser = (user: DouyinFollowingUser): void => {
-    const status = liveMap[user.secUid];
-    if (status?.liveStatus && status.webRid) {
-      navigate(`/room/douyin/${status.webRid}`);
+    if (user.liveStatus && user.webRid) {
+      navigate(`/room/douyin/${user.webRid}`);
       return;
     }
     window.open(`https://www.douyin.com/user/${user.secUid}`, '_blank');
@@ -194,11 +152,6 @@ export function FollowingPanel(): React.JSX.Element {
               直播中 {liveCount}
             </button>
           </div>
-          {checking && (
-            <Spinner
-              label={`正在检查直播状态…（${Object.keys(liveMap).length}/${users.length}）`}
-            />
-          )}
         </div>
       )}
 
@@ -253,8 +206,7 @@ export function FollowingPanel(): React.JSX.Element {
         )}
 
         {visible.map((user) => {
-          const status = liveMap[user.secUid];
-          const isLive = Boolean(status?.liveStatus);
+          const isLive = user.liveStatus;
           return (
             <button
               key={user.secUid}
@@ -286,7 +238,7 @@ export function FollowingPanel(): React.JSX.Element {
                 <span className="flex shrink-0 items-center gap-2">
                   <LiveBadge />
                   <span className="tnum text-caption text-ink-2">
-                    {formatOnline(status.online)} 人在看
+                    {formatOnline(user.online)} 人在看
                   </span>
                 </span>
               ) : (

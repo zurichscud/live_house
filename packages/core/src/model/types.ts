@@ -132,6 +132,14 @@ export interface DouyinFollowingUser {
   uniqueId: string;
   avatar: string;
   followerCount: number;
+  /** 关注列表接口直接带回的直播状态（无需再逐个查询） */
+  liveStatus: boolean;
+  /** 直播间号（未开播为空） */
+  webRid: string;
+  /** 直播间 room_id（未开播为空） */
+  roomId: string;
+  /** 实时在线人数（未开播为 0） */
+  online: number;
 }
 
 export interface DouyinFollowingResult {
@@ -139,13 +147,4 @@ export interface DouyinFollowingResult {
   hasMore: boolean;
   /** 下一页请求的 max_time（本页响应的 min_time） */
   minTime: string;
-}
-
-export interface DouyinUserLiveStatus {
-  secUid: string;
-  liveStatus: boolean;
-  /** 直播间号（未开播为空） */
-  webRid: string;
-  roomId: string;
-  online: number;
 }
