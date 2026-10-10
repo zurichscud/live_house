@@ -24,7 +24,7 @@ await page.screenshot({ path: resolve(shotDir, 'audit-home-960.png') });
 console.log('✅ home @960x600');
 
 await page.locator('[data-testid="nav-history"]').click();
-await page.waitForSelector('h1:has-text("观看记录")', { timeout: 10000 });
+await page.waitForSelector('h1:has-text("历史")', { timeout: 10000 });
 await wait(600);
 await page.screenshot({ path: resolve(shotDir, 'audit-history-960.png') });
 console.log('✅ history @960x600');

@@ -1,4 +1,4 @@
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { _electron as electron } from 'playwright';
@@ -61,16 +61,14 @@ async function enterRoomById(roomId) {
 console.log('\n=== 0. 顶栏与左侧导航 ===');
 await page.waitForSelector('[data-testid="nav-home"]', { timeout: 40000 });
 const navCount = await page.locator('[data-testid^="nav-"]').count();
-console.log(`✅ 导航项: ${navCount} 个（首页/收藏/观看记录/我的/设置）`);
+console.log(`✅ 导航项: ${navCount} 个（首页/收藏/历史/我的/设置）`);
 const titleBarText = (
   await page.locator('[data-testid="title-bar"]').textContent()
 )?.trim();
 const titleBarInputs = await page.locator('[data-testid="title-bar"] input').count();
-const appName = (
-  await page.locator('[data-testid="app-name"]').textContent()
-)?.trim();
+const appLogo = await page.locator('[data-testid="app-logo"]').count();
 console.log(
-  `✅ 标题栏: 文本「${titleBarText || '空'}」（输入控件 ${titleBarInputs} 个）/ 侧栏品牌: ${appName}`
+  `✅ 标题栏: 文本「${titleBarText || '空'}」（输入控件 ${titleBarInputs} 个）/ 侧栏品牌图标: ${appLogo > 0 ? '有' : '无'}`
 );
 
 // 1. 首页看板（搜索 + 关注直播，无平台入口、无直播列表）
@@ -107,7 +105,7 @@ console.log(`✅ 关注直播: ${liveCardText || '未渲染'}`);
 const boardOk =
   titleBarInputs === 0 &&
   titleBarText === '' &&
-  appName === 'LIVE HOUSE' &&
+  appLogo === 1 &&
   boardRoomCount === 0 &&
   platformCards === 0 &&
   siteTrigger === 1 &&
@@ -140,6 +138,58 @@ console.log(
 await enterRoomById(sampleRoom.roomId);
 console.log('✅ 播放器组件已渲染');
 
+// 房间头：标题在头像右侧，主播名 / 人气 / 房间号同一行、icon 分隔（无点）
+const roomTitleText = (
+  await page.locator('[data-testid="room-title"]').textContent().catch(() => '')
+)?.trim();
+const roomMetaText = (
+  await page.locator('[data-testid="room-meta"]').textContent().catch(() => '')
+)?.trim();
+const roomMetaIcons = await page
+  .locator('[data-testid="room-meta"] svg')
+  .count()
+  .catch(() => 0);
+const roomHeaderOk =
+  Boolean(roomTitleText) &&
+  Boolean(roomMetaText) &&
+  !roomMetaText?.includes('·') &&
+  !roomMetaText?.includes('人气') &&
+  roomMetaIcons === 3;
+console.log(
+  `✅ 房间头: 标题「${roomTitleText}」/ 信息行「${roomMetaText}」（icon ${roomMetaIcons} 个，无点与「人气」字样: ${!roomMetaText?.includes('·') && !roomMetaText?.includes('人气') ? '是' : '否'}）`
+);
+
+// 侧栏品牌图标：直播间内激活；切到其他 tab 后点它返回刚才的直播间
+const appLogoActive = await page
+  .locator('[data-testid="app-logo"][aria-current="page"]')
+  .count();
+await page.locator('[data-testid="nav-favorites"]').click();
+await page.waitForSelector('h1:has-text("收藏")', { timeout: 10000 });
+const appLogoIdle = await page
+  .locator('[data-testid="app-logo"][aria-current="page"]')
+  .count();
+await page.locator('[data-testid="app-logo"]').click();
+await page.waitForSelector('[data-testid="live-player"]', { timeout: 30000 });
+const backToRoom = page.url().includes('#/room/');
+const appLogoOk = appLogoActive === 1 && appLogoIdle === 0 && backToRoom;
+console.log(
+  `✅ 侧栏应用图标: 直播间内激活=${appLogoActive === 1}，离开后点击返回直播间=${backToRoom}`
+);
+
+// 操作栏直播计时：HH:MM:SS 且逐秒走动
+const timerText = (
+  await page.locator('[data-testid="live-timer"]').textContent().catch(() => '')
+)?.trim();
+await wait(2200);
+const timerTextNext = (
+  await page.locator('[data-testid="live-timer"]').textContent().catch(() => '')
+)?.trim();
+const timerOk =
+  /^\d{2,}:\d{2}:\d{2}$/.test(timerText ?? '') && timerText !== timerTextNext;
+console.log(
+  `✅ 操作栏直播计时: ${timerText || '无'} → ${timerTextNext || '无'}（走动=${timerText !== timerTextNext}）`
+);
+
 // 收藏当前博主（供「收藏」页验证）
 await page.locator('[data-testid="room-favorite"]').click();
 const favoriteLabel = (
@@ -150,6 +200,17 @@ console.log(`✅ 收藏按钮: ${favoriteLabel}（应为「已收藏」）`);
 // 3. 播放与弹幕
 console.log('\n=== 3. 播放与弹幕（等待 15 秒）===');
 await wait(15000);
+
+// 首次加载 / 断流重连可能正好落在采样点：先等画面真正在播（最多 30s），再采样
+await page
+  .waitForFunction(
+    () => {
+      const video = document.querySelector('video');
+      return Boolean(video && !video.paused && video.currentTime > 1);
+    },
+    { timeout: 30000 }
+  )
+  .catch(() => {});
 
 const videoState = await page.evaluate(() => {
   const video = document.querySelector('video');
@@ -192,7 +253,83 @@ await page.screenshot({ path: resolve(shotDir, 'room-menu.png') });
 await page.keyboard.press('Escape');
 await wait(300);
 
-// 5. 房间页返回键 + 收藏 / 观看记录 / 我的 / 设置页
+// 4.1 暂停：画面定格，不得再显示「正在连接直播流」
+await player.hover();
+await page.locator('button[aria-label="暂停"]').first().click();
+await wait(600);
+const pauseState = await page.evaluate(() => {
+  const video = document.querySelector('video');
+  const playerText =
+    document.querySelector('[data-testid="live-player"]')?.innerText ?? '';
+  return {
+    paused: video?.paused ?? false,
+    connectingShown: playerText.includes('正在连接直播流')
+  };
+});
+const pauseOk = pauseState.paused && !pauseState.connectingShown;
+console.log(
+  `✅ 暂停: ${pauseState.paused ? '已暂停' : '未暂停'}；连接提示 ${pauseState.connectingShown ? '❌ 错误显示' : '未显示'}`
+);
+await page.screenshot({ path: resolve(shotDir, 'room-paused.png') });
+await page.locator('button[aria-label="播放"]').first().click();
+await wait(1200);
+
+// 4.2 小窗模式：独立小窗播放，主窗口转为占位；关闭小窗后主窗口恢复
+console.log('\n=== 4.2 小窗模式 ===');
+const miniWindowPromise = app.waitForEvent('window', { timeout: 15000 });
+await page.locator('[data-testid="player-mini"]').click();
+const miniWindow = await miniWindowPromise;
+await miniWindow.waitForLoadState('domcontentloaded');
+await miniWindow.waitForSelector('[data-testid="live-player"]', {
+  timeout: 30000
+});
+await miniWindow
+  .waitForFunction(
+    () => {
+      const video = document.querySelector('video');
+      return Boolean(video && !video.paused && video.currentTime > 0);
+    },
+    { timeout: 30000 }
+  )
+  .catch(() => {});
+const miniState = await miniWindow.evaluate(() => {
+  const video = document.querySelector('video');
+  return {
+    paused: video ? video.paused : true,
+    currentTime: video ? Number(video.currentTime.toFixed(1)) : -1
+  };
+});
+const miniPlaceholder = await page
+  .locator('text=正在小窗播放')
+  .waitFor({ timeout: 10000 })
+  .then(() => 1)
+  .catch(() => 0);
+await miniWindow.screenshot({ path: resolve(shotDir, 'mini-player.png') });
+console.log(
+  `✅ 小窗: ${!miniState.paused ? `播放中（${miniState.currentTime}s）` : '❌ 未播放'}；主窗口占位 ${miniPlaceholder > 0 ? '已显示' : '❌ 未显示'}`
+);
+
+await miniWindow.locator('[data-testid="mini-close"]').click();
+await page.waitForSelector('[data-testid="live-player"]', { timeout: 20000 });
+await page
+  .waitForFunction(
+    () => {
+      const video = document.querySelector('video');
+      return Boolean(video && !video.paused && video.currentTime > 0);
+    },
+    { timeout: 30000 }
+  )
+  .catch(() => {});
+const mainRestored = await page.evaluate(() => {
+  const video = document.querySelector('video');
+  return video ? !video.paused && video.currentTime > 0 : false;
+});
+const miniOk = !miniState.paused && miniPlaceholder > 0 && mainRestored;
+console.log(
+  `✅ 主窗口恢复: ${mainRestored ? '播放中' : '❌ 未恢复播放'}`
+);
+
+// 5. 房间页返回键 + 收藏 / 历史 / 我的 / 设置页
 console.log('\n=== 5. 页面导航 ===');
 await page.locator('[data-testid="room-back"]').click();
 await page.waitForSelector(liveCard, { timeout: 20000 });
@@ -228,11 +365,72 @@ console.log(
   `✅ 收藏: ${favoriteCount} 个博主（平台: ${favoritePlatform || '无'}，` +
     `直播状态: ${favoriteLive || '未返回'}）`
 );
+// 平台 tab：全部 + 3 平台，切走再切回列表仍完整
+const favoriteTabCount = await page
+  .locator('[data-testid^="favorites-tab-"]')
+  .count();
+await page.locator('[data-testid="favorites-tab-bilibili"]').click();
+await wait(300);
+await page.locator('[data-testid="favorites-tab-all"]').click();
+await page
+  .locator('[data-testid="favorite-item"]')
+  .first()
+  .waitFor({ timeout: 10000 });
+const favoriteCountAfterTabs = await page
+  .locator('[data-testid="favorite-item"]')
+  .count();
+console.log(
+  `✅ 收藏平台 tab: ${favoriteTabCount} 个（全部 + 3 平台），切回「全部」仍有 ${favoriteCountAfterTabs} 个博主`
+);
 const favoritesOk =
   favoriteCount > 0 &&
   favoritePlatform === '抖音' &&
-  Boolean(favoriteLive);
+  Boolean(favoriteLive) &&
+  favoriteTabCount === 4 &&
+  favoriteCountAfterTabs === favoriteCount;
 await page.screenshot({ path: resolve(shotDir, 'favorites.png') });
+
+// 5.1 收藏导出 / 导入：替换原生文件对话框，验证真实读写与去重合并
+console.log('\n=== 5.1 收藏导出 / 导入 ===');
+const backupFile = resolve(root, '.tmp/e2e/favorites-backup.json');
+mkdirSync(dirname(backupFile), { recursive: true });
+rmSync(backupFile, { force: true });
+await app.evaluate(
+  ({ dialog }, filePath) => {
+    dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+    dialog.showOpenDialog = async () => ({
+      canceled: false,
+      filePaths: [filePath]
+    });
+  },
+  backupFile
+);
+await page.locator('[data-testid="favorites-export"]').click();
+for (let i = 0; i < 50 && !existsSync(backupFile); i += 1) {
+  await wait(100);
+}
+const exportedCount = existsSync(backupFile)
+  ? JSON.parse(readFileSync(backupFile, 'utf8')).items.length
+  : 0;
+// 清空本地收藏并重新进入页面，再用导入恢复
+await page.evaluate(() => localStorage.removeItem('live-house:favorites'));
+await page.locator('[data-testid="nav-history"]').click();
+await page.waitForSelector('h1:has-text("历史")', { timeout: 10000 });
+await page.locator('[data-testid="nav-favorites"]').click();
+await page.waitForSelector('h1:has-text("收藏")', { timeout: 10000 });
+const emptiedCount = await page.locator('[data-testid="favorite-item"]').count();
+await page.locator('[data-testid="favorites-import-empty"]').click();
+await page
+  .locator('[data-testid="favorite-item"]')
+  .first()
+  .waitFor({ timeout: 10000 });
+const restoredCount = await page.locator('[data-testid="favorite-item"]').count();
+const backupOk =
+  exportedCount > 0 && emptiedCount === 0 && restoredCount === exportedCount;
+console.log(
+  `✅ 收藏导出 / 导入: 导出 ${exportedCount} 条 → 清空后剩 ${emptiedCount} 条 → 导入恢复 ${restoredCount} 条`
+);
+await page.screenshot({ path: resolve(shotDir, 'favorites-backup.png') });
 
 await page.locator('[data-testid="nav-mine"]').click();
 await page.waitForSelector('h1:has-text("我的")', { timeout: 10000 });
@@ -249,13 +447,27 @@ const mineOk = mineTabCount === 3;
 await page.screenshot({ path: resolve(shotDir, 'mine.png') });
 
 await page.locator('[data-testid="nav-history"]').click();
-await page.waitForSelector('h1:has-text("观看记录")', { timeout: 10000 });
+await page.waitForSelector('h1:has-text("历史")', { timeout: 10000 });
 const historyTabCount = await page
   .locator('[data-testid^="history-tab-"]')
   .count();
+// 切到空平台 tab 时标题行按钮消失，tab 行不得因此上移（动作区固定高度）
+const historyTabRowY = (
+  await page.locator('[data-testid="history-tab-all"]').boundingBox()
+)?.y;
 await page.locator('[data-testid="history-tab-bilibili"]').click();
 await wait(300);
 const bilibiliCount = await page.locator('[data-testid="history-item"]').count();
+const historyTabRowYAfter = (
+  await page.locator('[data-testid="history-tab-all"]').boundingBox()
+)?.y;
+const historyLayoutStable =
+  historyTabRowY !== undefined &&
+  historyTabRowYAfter !== undefined &&
+  Math.abs(historyTabRowYAfter - historyTabRowY) < 1;
+console.log(
+  `✅ 切换平台无位移: ${historyLayoutStable ? '是' : `否（${historyTabRowY} → ${historyTabRowYAfter}）`}`
+);
 await page.locator('[data-testid="history-tab-douyin"]').click();
 await wait(300);
 await page
@@ -289,7 +501,7 @@ const historyLive = (
     .catch(() => '')
 )?.trim();
 console.log(
-  `✅ 观看记录: ${historyCount} 条（平台标注: ${historyPlatform || '无'}，` +
+  `✅ 历史: ${historyCount} 条（平台标注: ${historyPlatform || '无'}，` +
     `直播状态: ${historyLive || '未返回'}，行内图标 ${historyIcons} 个）`
 );
 const historyOk =
@@ -298,7 +510,8 @@ const historyOk =
   historyCount > 0 &&
   Boolean(historyPlatform) &&
   Boolean(historyLive) &&
-  historyIcons >= 3;
+  historyIcons >= 3 &&
+  historyLayoutStable;
 await page.screenshot({ path: resolve(shotDir, 'history.png') });
 
 await page.locator('[data-testid="nav-settings"]').click();
@@ -353,33 +566,121 @@ const backToDark = await page.evaluate(
 console.log(`✅ 切回暗色: ${backToDark === 'dark' ? '是' : '否'}`);
 const themeOk = lightTheme === 'light' && backToDark === 'dark';
 
+// 8. 历史封面兜底：未开播房间详情缺封面时，不得把历史里已有的封面覆盖为空
+console.log('\n=== 8. 历史封面兜底 ===');
+const coverGuardRoom = 'e2e-offline-cover-guard';
+const coverGuardCover =
+  'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxIiBoZWlnaHQ9IjEiLz4=';
+await page.evaluate(
+  ({ roomId, cover }) => {
+    const key = 'live-house:watch-history';
+    const list = JSON.parse(localStorage.getItem(key) ?? '[]');
+    const rest = list.filter((entry) => entry.roomId !== roomId);
+    localStorage.setItem(
+      key,
+      JSON.stringify([
+        {
+          platform: 'douyin',
+          roomId,
+          title: '历史标题',
+          userName: '历史主播',
+          cover,
+          avatar: '',
+          watchedAt: Date.now()
+        },
+        ...rest
+      ])
+    );
+  },
+  { roomId: coverGuardRoom, cover: coverGuardCover }
+);
+// 主进程层面模拟「未开播房间」：详情没有封面 / 标题 / 头像
+await app.evaluate(({ ipcMain }) => {
+  ipcMain.removeHandler('site:getRoomDetail');
+  ipcMain.handle('site:getRoomDetail', (_event, _site, roomId) => ({
+    roomId,
+    title: '',
+    cover: '',
+    userName: '',
+    userAvatar: '',
+    online: 0,
+    status: false,
+    url: `https://live.douyin.com/${roomId}`,
+    introduction: '',
+    notice: '',
+    data: {}
+  }));
+});
+await page.evaluate((roomId) => {
+  window.location.hash = `#/room/douyin/${roomId}`;
+}, coverGuardRoom);
+await wait(1500);
+const coverGuardValue = await page.evaluate((roomId) => {
+  const list = JSON.parse(
+    localStorage.getItem('live-house:watch-history') ?? '[]'
+  );
+  return list.find((entry) => entry.roomId === roomId)?.cover ?? '';
+}, coverGuardRoom);
+const coverGuardOk = coverGuardValue === coverGuardCover;
+console.log(
+  `✅ 未开播回访: ${coverGuardOk ? '历史封面保留' : '❌ 封面被覆盖为空'}`
+);
+
 // 结果
 console.log('\n=== 结果 ===');
 const playing = videoState && !videoState.paused && videoState.currentTime > 1;
 const hasDanmaku = danmakuCount > 0;
 console.log(`顶栏/看板: ${boardOk ? '✅ 正常' : '❌ 异常'}`);
+console.log(
+  `侧栏应用图标: ${appLogoOk ? '✅ 直播间激活 / 可返回' : '❌ 激活或返回异常'}`
+);
+console.log(
+  `直播计时: ${timerOk ? '✅ 显示且逐秒走动' : '❌ 未显示或未走动'}`
+);
+console.log(
+  `房间头: ${roomHeaderOk ? '✅ 标题贴头像右侧、信息行 icon 分隔' : '❌ 标题 / 信息行不符合预期'}`
+);
 console.log(`播放: ${playing ? '✅ 正常播放' : '❌ 未播放'}`);
+console.log(
+  `暂停: ${pauseOk ? '✅ 定格且不显示连接提示' : '❌ 暂停误显连接提示或未暂停'}`
+);
+console.log(
+  `小窗: ${miniOk ? '✅ 小窗播放、主窗口占位并恢复' : '❌ 小窗链路异常'}`
+);
 console.log(`弹幕: ${hasDanmaku ? '✅ 正常接收' : '❌ 未收到弹幕'}`);
 console.log(
   `收藏: ${favoritesOk ? '✅ 可收藏并显示直播状态' : '❌ 收藏链路异常'}`
 );
+console.log(
+  `收藏导出/导入: ${backupOk ? '✅ 备份并恢复' : '❌ 导出或导入异常'}`
+);
 console.log(`我的: ${mineOk ? '✅ 平台 tab 正常' : '❌ 平台 tab 异常'}`);
 console.log(
-  `观看记录: ${historyOk ? '✅ 已写入（平台 / 图标 / 直播状态）' : '❌ 未写入或缺少平台、直播状态'}`
+  `历史: ${historyOk ? '✅ 已写入（平台 / 图标 / 直播状态）' : '❌ 未写入或缺少平台、直播状态'}`
 );
 console.log(`主题切换: ${themeOk ? '✅ 正常' : '❌ 异常'}`);
+console.log(
+  `历史封面兜底: ${coverGuardOk ? '✅ 未开播不覆盖封面' : '❌ 封面被清空'}`
+);
 console.log(`渲染错误: ${errors.length} 个`);
 console.log(`截图目录: ${shotDir}`);
 
 await app.close();
 process.exit(
   boardOk &&
+    roomHeaderOk &&
+    appLogoOk &&
+    timerOk &&
     playing &&
+    pauseOk &&
+    miniOk &&
     hasDanmaku &&
     favoritesOk &&
+    backupOk &&
     mineOk &&
     historyOk &&
     themeOk &&
+    coverGuardOk &&
     errors.length === 0
     ? 0
     : 1

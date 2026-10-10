@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ComponentPropsWithoutRef } from 'react';
 import {
   ChevronUp,
+  Clock,
   ExternalLink,
   Maximize,
   MessageSquareOff,
@@ -10,6 +11,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Pause,
+  PictureInPicture2,
   Play,
   RotateCw,
   TriangleAlert,
@@ -19,7 +21,7 @@ import {
 } from 'lucide-react';
 import type { LivePlayQuality, LiveRoomDetail } from '@live-house/core';
 import { LivePlayerController } from '@/lib/player';
-import { formatOnline } from '@/lib/format';
+import { formatDuration, formatOnline } from '@/lib/format';
 import { cn } from '@/lib/cn';
 import {
   getPlayerMuted,
@@ -46,12 +48,29 @@ interface Props {
   onToggleDanmakuPanel?: () => void;
   onRefresh?: () => void;
   onOpenExternal?: () => void;
+  /** 打开小窗模式（提供时窗口模式控制栏显示小窗按钮） */
+  onOpenMini?: () => void;
+  /** 紧凑模式（小窗）：只保留播放 / 音量 / 弹幕开关 */
+  compact?: boolean;
   className?: string;
   /** 弹幕覆盖层等叠加内容 */
   children?: React.ReactNode;
 }
 
 type Tone = 'overlay' | 'docked';
+
+/** 解析平台开播时间（B 站 live_start_time，秒级时间戳字符串）；非法或未来时间返回 null */
+function parseLiveStartTime(showTime?: string): number | null {
+  if (!showTime) {
+    return null;
+  }
+  const value = Number(showTime);
+  if (!Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+  const ms = value > 1e12 ? value : value * 1000;
+  return ms <= Date.now() ? ms : null;
+}
 
 const toneStyles: Record<
   Tone,
@@ -153,6 +172,8 @@ export function LivePlayer({
   onToggleDanmakuPanel,
   onRefresh,
   onOpenExternal,
+  onOpenMini,
+  compact = false,
   className,
   children
 }: Props) {
@@ -162,61 +183,34 @@ export function LivePlayer({
   const retryRef = useRef(0);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateRef = useRef({ qualities, qualityIndex: 0, lineIndex: 0 });
+  /** 本次进入直播间开始播放的时刻：平台不给开播时间时的计时起点 */
+  const startedAtRef = useRef(Date.now());
 
   const [qualityIndex, setQualityIndex] = useState(0);
   const [lineIndex, setLineIndex] = useState(0);
   const [error, setError] = useState('');
   const [playing, setPlaying] = useState(false);
   const [buffering, setBuffering] = useState(false);
+  /** 连接中（首次加载 / 切换画质或线路 / 重连）：与用户暂停区分，暂停不显示连接提示 */
+  const [connecting, setConnecting] = useState(true);
   const [muted, setMuted] = useState(getPlayerMuted);
   const [volume, setVolume] = useState(getPlayerVolume);
   const [menuOpen, setMenuOpen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+  const [now, setNow] = useState(() => Date.now());
 
   stateRef.current = { qualities, qualityIndex, lineIndex };
 
-  // 画面框贴合流分辨率：容器里只保留视频实际显示区，黑边不占位
+  // 直播计时：每秒推进一次
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) {
-      return;
-    }
-    const sync = (): void =>
-      setContainerSize((prev) =>
-        prev.width === el.clientWidth && prev.height === el.clientHeight
-          ? prev
-          : { width: el.clientWidth, height: el.clientHeight }
-      );
-    sync();
-    const observer = new ResizeObserver(sync);
-    observer.observe(el);
-    return () => observer.disconnect();
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
   }, []);
 
-  const syncVideoSize = useCallback((): void => {
-    const video = videoRef.current;
-    if (!video || !video.videoWidth || !video.videoHeight) {
-      return;
-    }
-    setVideoSize((prev) =>
-      prev.width === video.videoWidth && prev.height === video.videoHeight
-        ? prev
-        : { width: video.videoWidth, height: video.videoHeight }
-    );
-  }, []);
-
-  const boxStyle = useMemo(() => {
-    const { width: cw, height: ch } = containerSize;
-    const { width: vw, height: vh } = videoSize;
-    if (!cw || !ch || !vw || !vh) {
-      return { width: '100%', height: '100%' };
-    }
-    const scale = Math.min(cw / vw, ch / vh);
-    return { width: Math.round(vw * scale), height: Math.round(vh * scale) };
-  }, [containerSize, videoSize]);
+  const platformStart = parseLiveStartTime(detail.showTime);
+  const liveStartedAt = platformStart ?? startedAtRef.current;
+  const liveDuration = formatDuration(now - liveStartedAt);
 
   const handleError = useCallback((message: string) => {
     const state = stateRef.current;
@@ -230,7 +224,11 @@ export function LivePlayer({
     // 2. 原地重试
     if (retryRef.current < 3) {
       retryRef.current++;
-      setTimeout(() => controllerRef.current?.reload(), 2000);
+      setTimeout(() => {
+        setBuffering(false);
+        setConnecting(true);
+        controllerRef.current?.reload();
+      }, 2000);
       return;
     }
     setError(message);
@@ -265,6 +263,7 @@ export function LivePlayer({
     retryRef.current = 0;
     setError('');
     setBuffering(false);
+    setConnecting(true);
     controllerRef.current?.play(url);
   }, [qualities, qualityIndex, lineIndex]);
 
@@ -394,51 +393,68 @@ export function LivePlayer({
         </div>
       </div>
 
-      <div
-        className={cn('mx-1 h-5 w-px shrink-0', toneStyles[tone].divider)}
-        aria-hidden
-      />
-
-      <Dropdown
-        onOpenChange={setMenuOpen}
-        value={String(qualityIndex)}
-        onSelect={(value) => {
-          setQualityIndex(Number(value));
-          setLineIndex(0);
-        }}
-        items={qualities.map((quality, index) => ({
-          value: String(index),
-          label: quality.quality
-        }))}
-        trigger={
-          <MenuTrigger
-            tone={tone}
-            label="画质"
-            value={currentQuality?.quality ?? '画质'}
+      {!compact && (
+        <>
+          <div
+            className={cn('mx-1 h-5 w-px shrink-0', toneStyles[tone].divider)}
+            aria-hidden
           />
-        }
-      />
 
-      <Dropdown
-        onOpenChange={setMenuOpen}
-        value={String(lineIndex)}
-        onSelect={(value) => setLineIndex(Number(value))}
-        items={currentUrls.map((url, index) => ({
-          value: String(index),
-          label: `线路 ${index + 1}（${url.includes('.m3u8') ? 'HLS' : 'FLV'}）`
-        }))}
-        trigger={
-          <MenuTrigger tone={tone} label="线路" value={`线路 ${lineIndex + 1}`} />
-        }
-      />
+          <Dropdown
+            onOpenChange={setMenuOpen}
+            value={String(qualityIndex)}
+            onSelect={(value) => {
+              setQualityIndex(Number(value));
+              setLineIndex(0);
+            }}
+            items={qualities.map((quality, index) => ({
+              value: String(index),
+              label: quality.quality
+            }))}
+            trigger={
+              <MenuTrigger
+                tone={tone}
+                label="画质"
+                value={currentQuality?.quality ?? '画质'}
+              />
+            }
+          />
 
-      {tone === 'docked' && onRefresh && (
-        <ControlButton tone={tone} label="刷新直播间" onClick={onRefresh}>
-          <RotateCw className="size-4" />
-        </ControlButton>
+          <Dropdown
+            onOpenChange={setMenuOpen}
+            value={String(lineIndex)}
+            onSelect={(value) => setLineIndex(Number(value))}
+            items={currentUrls.map((url, index) => ({
+              value: String(index),
+              label: `线路 ${index + 1}（${url.includes('.m3u8') ? 'HLS' : 'FLV'}）`
+            }))}
+            trigger={
+              <MenuTrigger tone={tone} label="线路" value={`线路 ${lineIndex + 1}`} />
+            }
+          />
+
+          {tone === 'docked' && onRefresh && (
+            <ControlButton tone={tone} label="刷新直播间" onClick={onRefresh}>
+              <RotateCw className="size-4" />
+            </ControlButton>
+          )}
+        </>
       )}
 
       <div className="flex-1" />
+
+      {/* 直播计时：优先平台开播时间（B 站），其余平台从进入直播间起算 */}
+      <span
+        data-testid="live-timer"
+        title={platformStart ? '直播已开播时长' : '本次观看时长'}
+        className={cn(
+          'tnum flex h-8 shrink-0 select-none items-center gap-1.5 px-2 text-caption',
+          tone === 'overlay' ? 'text-white/70' : 'text-ink-3'
+        )}
+      >
+        <Clock className="size-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+        {liveDuration}
+      </span>
 
       <ControlButton
         tone={tone}
@@ -453,53 +469,68 @@ export function LivePlayer({
         )}
       </ControlButton>
 
-      <ControlButton
-        tone={tone}
-        label={isFullscreen ? '退出全屏' : '全屏'}
-        onClick={toggleFullscreen}
-      >
-        {isFullscreen ? (
-          <Minimize className="size-4" />
-        ) : (
-          <Maximize className="size-4" />
-        )}
-      </ControlButton>
-
-      {tone === 'docked' && onOpenExternal && (
+      {!compact && (
         <>
-          <div
-            className={cn('mx-1 h-5 w-px shrink-0', toneStyles[tone].divider)}
-            aria-hidden
-          />
+          {onOpenMini && (
+            <ControlButton
+              tone={tone}
+              testId="player-mini"
+              label="小窗模式"
+              onClick={onOpenMini}
+            >
+              <PictureInPicture2 className="size-4" />
+            </ControlButton>
+          )}
+
           <ControlButton
             tone={tone}
-            label="在浏览器打开"
-            onClick={onOpenExternal}
+            label={isFullscreen ? '退出全屏' : '全屏'}
+            onClick={toggleFullscreen}
           >
-            <ExternalLink className="size-4" />
+            {isFullscreen ? (
+              <Minimize className="size-4" />
+            ) : (
+              <Maximize className="size-4" />
+            )}
           </ControlButton>
-        </>
-      )}
 
-      {tone === 'docked' && onToggleDanmakuPanel && (
-        <ControlButton
-          tone={tone}
-          testId="danmaku-panel-toggle"
-          label={danmakuPanelCollapsed ? '展开弹幕面板' : '收起弹幕面板'}
-          onClick={onToggleDanmakuPanel}
-        >
-          {danmakuPanelCollapsed ? (
-            <PanelRightOpen className="size-4" />
-          ) : (
-            <PanelRightClose className="size-4" />
+          {tone === 'docked' && onOpenExternal && (
+            <>
+              <div
+                className={cn('mx-1 h-5 w-px shrink-0', toneStyles[tone].divider)}
+                aria-hidden
+              />
+              <ControlButton
+                tone={tone}
+                label="在浏览器打开"
+                onClick={onOpenExternal}
+              >
+                <ExternalLink className="size-4" />
+              </ControlButton>
+            </>
           )}
-        </ControlButton>
+
+          {tone === 'docked' && onToggleDanmakuPanel && (
+            <ControlButton
+              tone={tone}
+              testId="danmaku-panel-toggle"
+              label={danmakuPanelCollapsed ? '展开弹幕面板' : '收起弹幕面板'}
+              onClick={onToggleDanmakuPanel}
+            >
+              {danmakuPanelCollapsed ? (
+                <PanelRightOpen className="size-4" />
+              ) : (
+                <PanelRightClose className="size-4" />
+              )}
+            </ControlButton>
+          )}
+        </>
       )}
     </>
   );
 
   return (
-    <div className={cn('flex min-h-0 flex-col gap-2', className)}>
+    <div className={cn('flex min-h-0 flex-col', className)}>
       {/* 播放器画面 */}
       <div
         ref={containerRef}
@@ -521,28 +552,30 @@ export function LivePlayer({
           }
           setControlsVisible(true);
         }}
-        onDoubleClick={toggleFullscreen}
+        onDoubleClick={compact ? undefined : toggleFullscreen}
       >
-        <div className="absolute inset-0 flex items-center justify-center">
+        {/* 画面区撑满播放器容器：视频等比居中，letterbox 与播放器底色一致 */}
+        <div className="absolute inset-0">
           <div
-            style={boxStyle}
             className={cn(
-              'relative overflow-hidden bg-black',
+              'relative size-full overflow-hidden bg-black',
               !isFullscreen && 'rounded-md'
             )}
           >
-            <video
-              ref={videoRef}
-              className="size-full object-contain"
-              autoPlay
-              playsInline
-              onLoadedMetadata={syncVideoSize}
-              onResize={syncVideoSize}
-              onPlay={() => setPlaying(true)}
-              onPause={() => setPlaying(false)}
-              onWaiting={() => setBuffering(true)}
-              onPlaying={() => setBuffering(false)}
-            />
+          <video
+            ref={videoRef}
+            className="size-full object-contain"
+            autoPlay
+            playsInline
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onWaiting={() => setBuffering(true)}
+            onPlaying={() => {
+              setPlaying(true);
+              setBuffering(false);
+              setConnecting(false);
+            }}
+          />
 
             {/* 弹幕覆盖层 */}
             <div className="absolute inset-0 z-10">{children}</div>
@@ -556,8 +589,8 @@ export function LivePlayer({
               </div>
             )}
 
-            {/* 首次加载 */}
-            {!playing && !error && detail.status && (
+            {/* 连接中（首次加载 / 切换画质或线路 / 重连）：用户暂停时不显示 */}
+            {connecting && !playing && !error && detail.status && (
               <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-black">
                 {detail.cover && (
                   <img
@@ -617,6 +650,8 @@ export function LivePlayer({
                   onClick={() => {
                     retryRef.current = 0;
                     setError('');
+                    setBuffering(false);
+                    setConnecting(true);
                     controllerRef.current?.reload();
                   }}
                 >

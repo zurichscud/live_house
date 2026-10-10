@@ -24,6 +24,25 @@ function subscribe<T>(
   };
 }
 
+/** 导出结果：用户取消保存时为 { canceled: true } */
+export interface FavoritesExportResult {
+  canceled: boolean;
+  filePath?: string;
+}
+
+/** 导入结果：用户取消选择文件时为 { canceled: true }，否则带回文件内容 */
+export interface FavoritesImportResult {
+  canceled: boolean;
+  filePath?: string;
+  content?: string;
+}
+
+/** 小窗当前播放的直播间（未打开时为 null） */
+export interface MiniWindowState {
+  site: string;
+  roomId: string;
+}
+
 const api = {
   platform: process.platform as string,
   settings: {
@@ -69,6 +88,23 @@ const api = {
       ipcRenderer.invoke('douyin:getSelfInfo'),
     getList: (secUid: string, maxTime = '0'): Promise<DouyinFollowingResult> =>
       ipcRenderer.invoke('douyin:getFollowingList', secUid, maxTime)
+  },
+  /** 收藏导入 / 导出：文件对话框与磁盘读写由主进程完成，这里只传 JSON 文本 */
+  favorites: {
+    exportFile: (content: string): Promise<FavoritesExportResult> =>
+      ipcRenderer.invoke('favorites:export', content),
+    importFile: (): Promise<FavoritesImportResult> =>
+      ipcRenderer.invoke('favorites:import')
+  },
+  /** 小窗模式：独立置顶小窗播放指定直播间 */
+  mini: {
+    open: (site: SiteId, roomId: string): Promise<void> =>
+      ipcRenderer.invoke('mini:open', site, roomId),
+    close: (): Promise<void> => ipcRenderer.invoke('mini:close'),
+    getState: (): Promise<MiniWindowState | null> =>
+      ipcRenderer.invoke('mini:getState'),
+    onClosed: (callback: () => void): (() => void) =>
+      subscribe('mini:closed', () => callback())
   },
   danmaku: {
     start: (site: SiteId, args: unknown): Promise<void> =>

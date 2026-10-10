@@ -40,6 +40,16 @@ export function parseRoomInput(input: string): {
   return numberMatch ? { roomId: numberMatch[0] } : { roomId: '' };
 }
 
+/** 格式化直播计时：毫秒 -> HH:MM:SS（小时不封顶，24h+ 继续累加） */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
 /** 相对时间：刚刚 / X 分钟前 / X 小时前 / X 天前 / YYYY-MM-DD */
 export function formatRelativeTime(timestamp: number): string {
   const diff = Date.now() - timestamp;

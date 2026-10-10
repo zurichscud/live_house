@@ -35,17 +35,41 @@ export function getWatchHistory(): WatchHistoryItem[] {
   }
 }
 
+export function getWatchHistoryItem(
+  platform: SiteId,
+  roomId: string
+): WatchHistoryItem | undefined {
+  return getWatchHistory().find(
+    (entry) => entry.platform === platform && entry.roomId === roomId
+  );
+}
+
 export function addWatchHistory(
   item: Omit<WatchHistoryItem, 'watchedAt'>
 ): void {
   if (!item.roomId) {
     return;
   }
-  const list = getWatchHistory().filter(
+  const list = getWatchHistory();
+  const previous = list.find(
+    (entry) => entry.platform === item.platform && entry.roomId === item.roomId
+  );
+  // 未开播的房间详情可能缺少封面 / 头像 / 标题：保留上一次的有效值，避免历史里封面变黑
+  const merged: WatchHistoryItem = {
+    ...item,
+    title: item.title || previous?.title || '',
+    userName: item.userName || previous?.userName || '',
+    cover: item.cover || previous?.cover || '',
+    avatar: item.avatar || previous?.avatar || '',
+    watchedAt: Date.now()
+  };
+  const rest = list.filter(
     (entry) => !(entry.platform === item.platform && entry.roomId === item.roomId)
   );
-  list.unshift({ ...item, watchedAt: Date.now() });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(list.slice(0, MAX_ITEMS)));
+  localStorage.setItem(
+    STORAGE_KEY,
+    JSON.stringify([merged, ...rest].slice(0, MAX_ITEMS))
+  );
 }
 
 export function removeWatchHistory(platform: SiteId, roomId: string): void {
@@ -55,7 +79,7 @@ export function removeWatchHistory(platform: SiteId, roomId: string): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
 }
 
-/** 清空观看记录：传平台只清该平台，传 'all' 或不传则全清 */
+/** 清空历史记录：传平台只清该平台，传 'all' 或不传则全清 */
 export function clearWatchHistory(platform?: SiteId | 'all'): void {
   const list =
     platform && platform !== 'all'

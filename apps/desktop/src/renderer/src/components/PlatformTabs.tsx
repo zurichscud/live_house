@@ -45,7 +45,7 @@ function Tab({
 }
 
 /**
- * 平台切换 tab（观看记录 / 我的共用）。
+ * 平台切换 tab（历史 / 收藏 / 我的共用）。
  * 等宽 + 恒定字重：激活只换颜色，切换时不得产生几何变化。
  */
 export function PlatformTabs({

@@ -1,4 +1,11 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { readFile, stat, writeFile } from 'node:fs/promises';
+import {
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  type OpenDialogOptions,
+  type SaveDialogOptions
+} from 'electron';
 import type { LivePlayQuality, LiveRoomDetail } from '@live-house/core';
 import {
   douyinSite,
@@ -8,6 +15,16 @@ import {
   startDanmaku,
   stopDanmaku
 } from './site.js';
+import { closeMiniWindow, getMiniState, openMiniWindow } from './mini.js';
+
+/** 导入收藏的文件大小上限：正常导出（500 条）远小于此，超过即视为无效文件 */
+const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
+
+/**
+ * 弹幕连接是主进程全局单例：记录发起 `danmaku:start` 的窗口，
+ * 只有 owner 能 stop，避免主窗口 / 小窗在切换时互相打断。
+ */
+let danmakuOwnerId: number | null = null;
 
 export function registerIpc(): void {
   ipcMain.handle('settings:getCookie', () => getUserCookie());
@@ -34,6 +51,52 @@ export function registerIpc(): void {
       }
     }
   );
+
+  // ---- 收藏导入 / 导出（文件对话框与磁盘读写只在主进程，渲染进程只传 JSON 文本）----
+
+  ipcMain.handle('favorites:export', async (event, content: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const now = new Date();
+    const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+    const options: SaveDialogOptions = {
+      title: '导出收藏',
+      defaultPath: `live-house-favorites-${stamp}.json`,
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    };
+    const result = win
+      ? await dialog.showSaveDialog(win, options)
+      : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) {
+      return { canceled: true };
+    }
+    await writeFile(result.filePath, content, 'utf8');
+    return { canceled: false, filePath: result.filePath };
+  });
+
+  ipcMain.handle('favorites:import', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const options: OpenDialogOptions = {
+      title: '导入收藏',
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }]
+    };
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options);
+    const filePath = result.filePaths[0];
+    if (result.canceled || !filePath) {
+      return { canceled: true };
+    }
+    const { size } = await stat(filePath);
+    if (size > MAX_IMPORT_BYTES) {
+      throw new Error('文件过大（超过 2MB），不是收藏导出文件');
+    }
+    return {
+      canceled: false,
+      filePath,
+      content: await readFile(filePath, 'utf8')
+    };
+  });
 
   // ---- 通用站点能力（按 siteId 分发到对应平台实现）----
 
@@ -86,9 +149,29 @@ export function registerIpc(): void {
       douyinSite().getFollowingList(secUid, maxTime)
   );
 
+  // ---- 小窗模式（独立置顶小窗，播放同一账号体系下的直播间）----
+
+  ipcMain.handle('mini:open', (event, site: string, roomId: string) => {
+    openMiniWindow(BrowserWindow.fromWebContents(event.sender), site, roomId);
+  });
+
+  ipcMain.handle('mini:close', () => {
+    closeMiniWindow();
+  });
+
+  ipcMain.handle('mini:getState', () => getMiniState());
+
   // ---- 弹幕（站点分发）----
 
   ipcMain.handle('danmaku:start', (event, site: string, args: unknown) => {
+    danmakuOwnerId = event.sender.id;
+    // owner 窗口被销毁（如小窗直接关闭）时，连同弹幕连接一起清理
+    event.sender.once('destroyed', () => {
+      if (danmakuOwnerId === event.sender.id) {
+        danmakuOwnerId = null;
+        stopDanmaku();
+      }
+    });
     startDanmaku(site, args, {
       onMessage: (message) => {
         if (!event.sender.isDestroyed()) {
@@ -108,7 +191,11 @@ export function registerIpc(): void {
     });
   });
 
-  ipcMain.handle('danmaku:stop', () => {
+  ipcMain.handle('danmaku:stop', (event) => {
+    if (danmakuOwnerId !== null && danmakuOwnerId !== event.sender.id) {
+      return;
+    }
+    danmakuOwnerId = null;
     stopDanmaku();
   });
 }

@@ -22,7 +22,8 @@ pnpm package:mac    # dmg/zip；package:win 需 Windows 或 wine
 ## 架构铁律
 
 - **新增平台**：core 实现 `LiveSite` → `apps/desktop/src/main/site.ts` 注册表 → `apps/desktop/src/renderer/src/lib/sites.ts` 打开能力开关（`available` 可搜索可播放、`following` 有账号关注列表）。房间路由是 `/room/:site/:roomId`，搜索页 `/search?site=&kw=`。
-- **IPC**：渲染进程只用 `window.api`（`site.*` 通用站点能力、`danmaku.*`、`following.*` 抖音账号能力、`settings.*`）。`danmaku:start` 的参数必须是可结构化克隆的纯对象。
+- **IPC**：渲染进程只用 `window.api`（`site.*` 通用站点能力、`danmaku.*`、`following.*` 抖音账号能力、`settings.*`、`favorites.*` 收藏文件导入导出——文件对话框与磁盘读写只在主进程、`mini.*` 小窗模式）。`danmaku:start` 的参数必须是可结构化克隆的纯对象。
+- **弹幕连接是主进程全局单例**：同一时刻只有一个弹幕 client，`danmaku:start` 的消息只推给发起窗口，`danmaku:stop` 只对 owner 窗口生效（owner 窗口销毁时自动清理）。小窗 / 主窗口切换、多窗口共存都依赖这条 owner 规则，不要绕过 `window.api.danmaku` 直连。
 - **播放约定**：`getPlayQualites()` 返回的每个 `quality.data` 必须是可直接播放的 URL `string[]`（按线路优先级排序，播放器的「线路」下拉按数组下标切），播放器不会再调 `getPlayUrls`；拉流/图片所需的 Referer/UA/CORS 由各站点 `streamHeaderRules` 声明、主进程 `webRequest` 注入。
 - `packages/core/src/sign/js/*` 是从 Dart 侧（simple_live_core）提取的签名 JS，**已提交、运行不需要外部仓库**；只有更新签名算法时才用 `SIMPLE_LIVE_CORE_DIR=/path/to/simple_live_core pnpm extract:sign` 重新生成。
 
@@ -37,6 +38,7 @@ pnpm package:mac    # dmg/zip；package:win 需 Windows 或 wine
 - Electron 二进制未安装时（`node_modules/.pnpm/electron@*/node_modules/electron/dist` 缺失）：进该目录手动 `node install.js`；`.npmrc` 已配国内镜像。
 - 主进程日志（含弹幕连接）走 stdout；Playwright 需转发 `app.process().stdout` 才能看到。
 - 抖音：搜索与「关注」列表需要登录态（无 Cookie 时搜索返回 `2483`）；Cookie 在设置页粘贴，存于 Electron userData 的 `settings.json`。搜索接口**必须带用户 Cookie**（只带 HEAD 拿到的动态 ttwid 会回 2483），`searchRooms` 里是 `this.cookie || dyCookie`。「关注」接口与直播接口不是同一套：需 `https://www.douyin.com/` 的 referer + 完整 Cookie + a_bogus 签名，分页用上一页 `min_time` 作下一页 `max_time`（`offset` 无效），页间隔 ≥1.5s。关注用户的**直播状态直接来自 `following/list` 每条的 `live_status` + `room_data`**（含 `owner.web_rid` / `user_count`），不要再逐个请求 `user/profile/other`（该接口对非浏览器请求已风控：HTTP 444 + `Access Denied` HTML）。
+- 未开播的房间详情可能缺封面 / 头像 / 标题（抖音详情接口对未开播显式返回空覆盖图，虎牙截图同理）：写历史与渲染房间页时必须用历史缓存兜底，否则历史条目的封面会被空值覆盖、变黑。
 - B 站：分区房间接口 `second/getList` 已被风控（-352），改用 `second/getListByArea` + `parent_area_id/area_id`；匿名弹幕 op3 人气恒回占位值 `1`（实现里已做 `>1` 才上报，UI 回落到房间详情人气）；部分高清晰度需要完整 Cookie。
 - 虎牙：拉流地址靠 WUP 签名（`getCndTokenInfoEx` + anticode），签名有效约 15 分钟，失败时兜底用房间页 anticode（仅默认码率）；HEVC/HDR 画质已过滤（mpegts.js 播不了）；官方赛事房匿名弹幕只推在线人数、不推聊天。
 

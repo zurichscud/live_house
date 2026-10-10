@@ -66,15 +66,17 @@ export function HistoryPage() {
     <div className="flex h-full flex-col">
       <div className="flex shrink-0 items-center gap-3 px-5 pb-1 pt-5">
         <h1 className="min-w-0 flex-1 truncate text-title font-semibold text-ink">
-          观看记录
+          历史
           {visibleItems.length > 0 && (
             <span className="ml-2 text-label font-normal text-ink-3">
               {visibleItems.length} 条
             </span>
           )}
         </h1>
-        {statusCheckable && visibleItems.length > 0 && (
-          <Tooltip label="刷新直播状态">
+        {/* 动作区固定高度：切换 tab 时按钮显隐不改变标题行高度 */}
+        <div className="flex h-8 shrink-0 items-center gap-3">
+          {statusCheckable && visibleItems.length > 0 && (
+            <Tooltip label="刷新直播状态">
               <Button
                 variant="ghost"
                 size="icon"
@@ -82,24 +84,25 @@ export function HistoryPage() {
                 aria-label="刷新直播状态"
                 onClick={refresh}
               >
-              <RotateCw className="size-4" strokeWidth={1.75} />
+                <RotateCw className="size-4" strokeWidth={1.75} />
+              </Button>
+            </Tooltip>
+          )}
+          {visibleItems.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="history-clear"
+              onClick={clearAll}
+            >
+              <Trash2 className="size-3.5" strokeWidth={1.75} />
+              清空记录
             </Button>
-          </Tooltip>
-        )}
-        {visibleItems.length > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="history-clear"
-            onClick={clearAll}
-          >
-            <Trash2 className="size-3.5" strokeWidth={1.75} />
-            清空记录
-          </Button>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* 平台 tab：切换后只显示该平台的观看记录，「全部」按时间倒序汇总 */}
+      {/* 平台 tab：切换后只显示该平台的历史记录，「全部」按时间倒序汇总 */}
       <div className="flex shrink-0 items-center gap-3 px-5 pt-3">
         <PlatformTabs
           value={activeSite}
@@ -122,15 +125,15 @@ export function HistoryPage() {
               icon={History}
               iconSrc={site.icon}
               title={`${site.name}还在开发中`}
-              description={`开发完成后，${site.shortName}的观看记录会显示在这里`}
+              description={`开发完成后，${site.shortName}的历史记录会显示在这里`}
             />
           ) : (
             <EmptyState
               icon={History}
               title={
                 activeSite === 'all'
-                  ? '还没有观看记录'
-                  : `还没有${site?.shortName ?? ''}的观看记录`
+                  ? '还没有历史记录'
+                  : `还没有${site?.shortName ?? ''}的历史记录`
               }
               description="进入过的直播间会出现在这里，方便下次快速回到"
             />
@@ -161,7 +164,19 @@ export function HistoryPage() {
                         loading="lazy"
                         className="size-full object-cover"
                       />
-                    ) : null}
+                    ) : (
+                      // 早期记录 / 未被直播接口返回过封面的条目：用平台图标占位，不留黑块
+                      <span
+                        className="flex size-full items-center justify-center"
+                        aria-hidden
+                      >
+                        <PlatformIcon
+                          site={site}
+                          fallback={History}
+                          className="size-5 opacity-50"
+                        />
+                      </span>
+                    )}
                     <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors duration-200 group-hover/row:bg-black/35">
                       <Play className="size-4 scale-90 fill-white text-white opacity-0 transition-all duration-200 ease-out-expo group-hover/row:scale-100 group-hover/row:opacity-100" />
                     </span>
