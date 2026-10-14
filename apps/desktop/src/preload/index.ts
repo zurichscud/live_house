@@ -84,8 +84,9 @@ const api = {
   },
   /** 抖音账号能力（关注列表 / 登录态，暂为抖音专有） */
   following: {
-    getSelfInfo: (): Promise<DouyinSelfInfo> =>
-      ipcRenderer.invoke('douyin:getSelfInfo'),
+    /** 传入 cookie 时验证该值（设置页未保存的内容），不传则验证已保存的 Cookie */
+    getSelfInfo: (cookie?: string): Promise<DouyinSelfInfo> =>
+      ipcRenderer.invoke('douyin:getSelfInfo', cookie),
     getList: (secUid: string, maxTime = '0'): Promise<DouyinFollowingResult> =>
       ipcRenderer.invoke('douyin:getFollowingList', secUid, maxTime)
   },

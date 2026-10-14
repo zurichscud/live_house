@@ -9,19 +9,26 @@ import { errorMessage } from '@/lib/error';
 
 export function SettingsPage() {
   const [cookie, setCookie] = useState('');
+  const [savedCookie, setSavedCookie] = useState('');
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [account, setAccount] = useState<DouyinSelfInfo | null>(null);
   const [verifyError, setVerifyError] = useState('');
 
   useEffect(() => {
-    void window.api.settings.getCookie().then(setCookie);
+    void window.api.settings.getCookie().then((saved) => {
+      setCookie(saved);
+      setSavedCookie(saved.trim());
+    });
   }, []);
 
   const save = async (): Promise<void> => {
+    const value = cookie.trim();
     setSaving(true);
     try {
-      await window.api.settings.setCookie(cookie.trim());
+      await window.api.settings.setCookie(value);
+      setSavedCookie(value);
+      setCookie(value);
       toast.success('已保存 Cookie');
       setVerifyError('');
       setAccount(null);
@@ -33,11 +40,25 @@ export function SettingsPage() {
   };
 
   const verify = async (): Promise<void> => {
+    const value = cookie.trim();
     setVerifying(true);
     setVerifyError('');
     setAccount(null);
     try {
-      setAccount(await window.api.following.getSelfInfo());
+      // 验证输入框里的内容（而非已保存的 Cookie）：粘贴后不点保存直接验证也能生效；
+      // 输入框为空时回落到已保存的 Cookie。
+      setAccount(await window.api.following.getSelfInfo(value || undefined));
+      // 验证成功说明这份 Cookie 有效，顺手保存，避免「验证通过但关注 / 搜索仍用旧 Cookie」
+      if (value && value !== savedCookie) {
+        try {
+          await window.api.settings.setCookie(value);
+          setSavedCookie(value);
+          setCookie(value);
+          toast.success('验证成功，已自动保存 Cookie');
+        } catch {
+          toast.error('验证成功，但保存失败，请点「保存」重试');
+        }
+      }
     } catch (e) {
       setVerifyError(errorMessage(e));
     } finally {
@@ -58,13 +79,19 @@ export function SettingsPage() {
             </div>
             <p className="max-w-[62ch] text-caption leading-relaxed text-ink-3">
               用于「关注」列表与「搜索」等需要登录态的接口。不配置也可以正常观看直播与弹幕；
-              配置只保存在本机，不会上传。
+              配置只保存在本机，不会上传。粘贴后不点「保存」直接「验证登录」也可以，
+              验证成功会自动保存。
             </p>
             <Textarea
               id="cookie-input"
               rows={5}
               value={cookie}
-              onChange={(event) => setCookie(event.target.value)}
+              onChange={(event) => {
+                setCookie(event.target.value);
+                // 输入变化后，上一次验证的账号信息与错误不再对应当前内容
+                setAccount(null);
+                setVerifyError('');
+              }}
               placeholder="粘贴 live.douyin.com 的完整 Cookie 值"
               spellCheck={false}
               aria-label="抖音 Cookie"
@@ -96,6 +123,9 @@ export function SettingsPage() {
                 </span>
               )}
               {verifying && <Spinner label="正在验证…" />}
+              {!verifying && !account && cookie.trim() !== savedCookie && (
+                <span className="text-caption text-ink-3">未保存</span>
+              )}
             </div>
             {verifyError && (
               <p className="flex items-start gap-2 text-caption text-accent-text">

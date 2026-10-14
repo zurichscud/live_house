@@ -816,9 +816,10 @@ export class DouyinSite implements LiveSite {
 
   private async getWebJson<T>(
     path: string,
-    params: Record<string, string>
+    params: Record<string, string>,
+    cookie = this.cookie
   ): Promise<T> {
-    if (!this.cookie) {
+    if (!cookie) {
       throw new Error('需要登录 Cookie：请在「设置」中粘贴抖音 Cookie 后重试');
     }
     const uri = new URL(`https://www.douyin.com${path}`);
@@ -833,7 +834,7 @@ export class DouyinSite implements LiveSite {
       headers: {
         accept: 'application/json, text/plain, */*',
         'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        cookie: this.cookie,
+        cookie,
         priority: 'u=1, i',
         referer: 'https://www.douyin.com/',
         'sec-ch-ua':
@@ -870,8 +871,12 @@ export class DouyinSite implements LiveSite {
     return json;
   }
 
-  /** 读取当前登录账号信息（同时用于校验 Cookie 是否有效） */
-  async getSelfInfo(): Promise<DouyinSelfInfo> {
+  /**
+   * 读取当前登录账号信息（同时用于校验 Cookie 是否有效）
+   * - 传入 `cookie` 时用它验证（如设置页刚粘贴、尚未保存的内容），不修改站点当前 Cookie；
+   *   不传则用已保存的 Cookie。
+   */
+  async getSelfInfo(cookie?: string): Promise<DouyinSelfInfo> {
     const json = await this.getWebJson<{
       user?: {
         sec_uid?: string;
@@ -880,9 +885,11 @@ export class DouyinSite implements LiveSite {
         following_count?: number;
         follower_count?: number;
       };
-    }>('/aweme/v1/web/user/profile/self/', {
-      publish_video_strategy_type: '2'
-    });
+    }>(
+      '/aweme/v1/web/user/profile/self/',
+      { publish_video_strategy_type: '2' },
+      cookie
+    );
     const user = json.user;
     if (!user?.sec_uid) {
       throw new Error('未获取到账号信息，请确认 Cookie 是否完整');

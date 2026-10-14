@@ -1,6 +1,6 @@
 {
   "name": "@live-house/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "LIVE HOUSE 直播核心库（抖音 / 哔哩哔哩 / 虎牙 接口与弹幕协议）",
   "type": "module",

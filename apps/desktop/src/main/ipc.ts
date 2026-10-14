@@ -141,7 +141,10 @@ export function registerIpc(): void {
 
   // ---- 抖音账号能力（关注列表 / 登录态，暂为抖音专有）----
 
-  ipcMain.handle('douyin:getSelfInfo', () => douyinSite().getSelfInfo());
+  // 传入 cookie 时用该值验证（设置页里刚粘贴、尚未保存的内容），不写入站点状态
+  ipcMain.handle('douyin:getSelfInfo', (_event, cookie?: string) =>
+    douyinSite().getSelfInfo(cookie)
+  );
 
   ipcMain.handle(
     'douyin:getFollowingList',

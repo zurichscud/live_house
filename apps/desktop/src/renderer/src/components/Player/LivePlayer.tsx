@@ -8,6 +8,8 @@ import {
   MessageSquareOff,
   MessageSquareText,
   Minimize,
+  PanelBottomClose,
+  PanelBottomOpen,
   PanelRightClose,
   PanelRightOpen,
   Pause,
@@ -29,6 +31,7 @@ import {
   savePlayerMuted,
   savePlayerVolume
 } from '@/lib/player-prefs';
+import { usePortrait } from '@/hooks/usePortrait';
 import { Button } from '@/components/ui/button';
 import { Dropdown } from '@/components/ui/dropdown';
 import { Spinner } from '@/components/ui/spinner';
@@ -50,6 +53,11 @@ interface Props {
   onOpenExternal?: () => void;
   /** 打开小窗模式（提供时窗口模式控制栏显示小窗按钮） */
   onOpenMini?: () => void;
+  /**
+   * 挂起（小窗模式接管期间）：停止拉流，但保留播放器实例与画质 / 线路 / 计时状态；
+   * 恢复时用最新地址重连，避免整块播放器重建导致的卡顿
+   */
+  suspended?: boolean;
   /** 紧凑模式（小窗）：只保留播放 / 音量 / 弹幕开关 */
   compact?: boolean;
   className?: string;
@@ -173,6 +181,7 @@ export function LivePlayer({
   onRefresh,
   onOpenExternal,
   onOpenMini,
+  suspended = false,
   compact = false,
   className,
   children
@@ -199,6 +208,8 @@ export function LivePlayer({
   const [controlsVisible, setControlsVisible] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  /** 竖屏：弹幕面板在播放器下方，收起/展开键的图标随之改为上下方向 */
+  const portrait = usePortrait();
 
   stateRef.current = { qualities, qualityIndex, lineIndex };
 
@@ -253,8 +264,15 @@ export function LivePlayer({
     };
   }, [handleError]);
 
-  // 画质 / 线路变化时重新播放
+  // 画质 / 线路变化时重新播放；挂起（小窗接管）期间停止拉流，恢复时用最新地址重连
   useEffect(() => {
+    if (suspended) {
+      controllerRef.current?.stop();
+      setBuffering(false);
+      setConnecting(false);
+      setPlaying(false);
+      return;
+    }
     const urls = (qualities[qualityIndex]?.data as string[] | undefined) ?? [];
     const url = urls[lineIndex];
     if (!url) {
@@ -265,7 +283,14 @@ export function LivePlayer({
     setBuffering(false);
     setConnecting(true);
     controllerRef.current?.play(url);
-  }, [qualities, qualityIndex, lineIndex]);
+  }, [qualities, qualityIndex, lineIndex, suspended]);
+
+  // 进入小窗模式时退出全屏，否则全屏层里看不到主窗口的「正在小窗播放」占位
+  useEffect(() => {
+    if (suspended && document.fullscreenElement) {
+      void document.exitFullscreen();
+    }
+  }, [suspended]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -345,6 +370,14 @@ export function LivePlayer({
   const currentUrls = (currentQuality?.data as string[] | undefined) ?? [];
   const VolumeIcon =
     muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+  /** 弹幕面板收起/展开键的图标：竖屏时面板在播放器下方，横屏时在右侧 */
+  const DanmakuPanelIcon = portrait
+    ? danmakuPanelCollapsed
+      ? PanelBottomOpen
+      : PanelBottomClose
+    : danmakuPanelCollapsed
+      ? PanelRightOpen
+      : PanelRightClose;
 
   /** 播放控制：窗口模式停靠在播放器下方，全屏模式作为浮层 */
   const renderControls = (tone: Tone): React.JSX.Element => (
@@ -517,11 +550,7 @@ export function LivePlayer({
               label={danmakuPanelCollapsed ? '展开弹幕面板' : '收起弹幕面板'}
               onClick={onToggleDanmakuPanel}
             >
-              {danmakuPanelCollapsed ? (
-                <PanelRightOpen className="size-4" />
-              ) : (
-                <PanelRightClose className="size-4" />
-              )}
+              <DanmakuPanelIcon className="size-4" />
             </ControlButton>
           )}
         </>
