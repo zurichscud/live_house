@@ -2,6 +2,10 @@ packages:
   - packages/*
   - apps/*
 
+allowBuilds:
+  electron-winstaller: false
+  esbuild: true
+
 onlyBuiltDependencies:
   - electron
   - esbuild
