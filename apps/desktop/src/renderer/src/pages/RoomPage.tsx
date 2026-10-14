@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
@@ -59,6 +59,11 @@ export function RoomPage() {
   const [miniChecked, setMiniChecked] = useState(false);
   /** 小窗关闭后正在用新鲜地址恢复播放（期间播放器保持挂起） */
   const [miniReturning, setMiniReturning] = useState(false);
+  /** miniOpen 的最新值：mini:closed 订阅不随 miniOpen 重建（重建会中断正在进行的恢复） */
+  const miniOpenRef = useRef(false);
+  /** 「返回主窗口」刷新的请求序号：再次开窗时作废旧请求，避免过期结果覆盖新状态 */
+  const miniReturnTokenRef = useRef(0);
+  miniOpenRef.current = miniOpen;
   /** 竖屏（屏幕或窗口高 ≥ 宽）：播放器在上、弹幕列表在下 */
   const portrait = usePortrait();
   const danmaku = useDanmaku();
@@ -154,27 +159,25 @@ export function RoomPage() {
 
   // 小窗关闭（返回主窗口）后恢复主窗口播放：先用新鲜地址重取房间详情 / 播放信息，
   // 避免拿小窗播放期间已过期的地址重连（虎牙 WUP 签名约 15 分钟失效）导致卡顿。
-  // miniOpen 进依赖：仅当主窗口此前确实处于小窗占位状态时才刷新恢复
+  // 订阅不能依赖 miniOpen：回调里的 setMiniOpen(false) 会触发本效果清理，从而中断这次恢复
+  // （表现为主窗口一直停在「正在返回主窗口播放…」），所以用 ref 读最新值、用请求序号判断有效。
   useEffect(() => {
-    let cancelled = false;
     const off = window.api.mini.onClosed(() => {
-      const returning = miniOpen;
-      setMiniOpen(false);
-      if (!returning) {
+      // 仅当主窗口此前确实处于小窗占位状态时才需要刷新恢复
+      if (!miniOpenRef.current) {
         return;
       }
+      setMiniOpen(false);
+      const token = ++miniReturnTokenRef.current;
       void (async () => {
         setMiniReturning(true);
         try {
           const freshDetail = await fetchRoomDetail();
-          if (cancelled) {
-            return;
-          }
           const freshQualities = await window.api.site.getPlayQualites(
             siteId,
             freshDetail
           );
-          if (cancelled) {
+          if (miniReturnTokenRef.current !== token) {
             return;
           }
           setDetail(freshDetail);
@@ -184,17 +187,14 @@ export function RoomPage() {
         } catch {
           // 刷新失败时沿用现有地址重连（播放器自带线路切换与重试）
         } finally {
-          if (!cancelled) {
+          if (miniReturnTokenRef.current === token) {
             setMiniReturning(false);
           }
         }
       })();
     });
-    return () => {
-      cancelled = true;
-      off();
-    };
-  }, [miniOpen, siteId, fetchRoomDetail]);
+    return off;
+  }, [siteId, fetchRoomDetail]);
 
   // 弹幕连接是主进程单例：小窗打开期间由小窗接管，回到主窗口后重连。
   // 依赖用弹幕参数的序列化值，避免返回时刷新详情触发不必要的二次重连
@@ -281,6 +281,9 @@ export function RoomPage() {
     if (!detail) {
       return;
     }
+    // 作废可能还在进行的「返回主窗口」刷新，避免它稍后把播放器状态改回去
+    miniReturnTokenRef.current++;
+    setMiniReturning(false);
     void window.api.mini
       .open(siteId, detail.roomId)
       .then(() => setMiniOpen(true))
