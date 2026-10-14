@@ -42,6 +42,7 @@ pnpm package:mac    # dmg/zip；package:win 需 Windows 或 wine
 - 未开播的房间详情可能缺封面 / 头像 / 标题（抖音详情接口对未开播显式返回空覆盖图，虎牙截图同理）：写历史与渲染房间页时必须用历史缓存兜底，否则历史条目的封面会被空值覆盖、变黑。
 - B 站：分区房间接口 `second/getList` 已被风控（-352），改用 `second/getListByArea` + `parent_area_id/area_id`；匿名弹幕 op3 人气恒回占位值 `1`（实现里已做 `>1` 才上报，UI 回落到房间详情人气）；部分高清晰度需要完整 Cookie。
 - 虎牙：拉流地址靠 WUP 签名（`getCndTokenInfoEx` + anticode），签名有效约 15 分钟，失败时兜底用房间页 anticode（仅默认码率）；HEVC/HDR 画质已过滤（mpegts.js 播不了）；官方赛事房匿名弹幕只推在线人数、不推聊天。
+- 打包时 electron-builder 的附属二进制（winCodeSign / nsis）**不读 `.npmrc` 里的 `electron_builder_binaries_mirror`**，默认去 GitHub 下载，实测会卡到 600s 超时（`Timeout awaiting 'request'`）：先设环境变量 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`（可连 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 一起设）再跑 `pnpm package:win` / `package:mac`。打包本身不涉及签名证书，日志里的 `signing with signtool.exe` 只是 electron-builder 给 exe 打完整性标记。
 
 ## 版本与推送
 
