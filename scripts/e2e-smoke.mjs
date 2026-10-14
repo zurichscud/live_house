@@ -87,13 +87,14 @@ const siteTriggerText = (
 await page.locator('[data-testid="search-site-trigger"]').click();
 await page.waitForSelector('[data-testid="menu-item"]', { timeout: 5000 });
 const siteOptionCount = await page.locator('[data-testid="menu-item"]').count();
-const bilibiliOptionDisabled =
-  (await page.locator('[data-testid="menu-item"]').nth(1).getAttribute('data-disabled')) !== null;
+// 三个平台都已接入（可搜索、可进房）：下拉项都不应被禁用
+const siteOptionsEnabled =
+  (await page.locator('[data-testid="menu-item"][data-disabled]').count()) === 0;
 await page.keyboard.press('Escape');
 await wait(200);
 console.log(
   `✅ 大号搜索框: 平台选择器 ${siteTrigger} 个（当前 ${siteTriggerText || '无'}），` +
-    `下拉 ${siteOptionCount} 项（B站禁用=${bilibiliOptionDisabled}）`
+    `下拉 ${siteOptionCount} 项（均可选=${siteOptionsEnabled}）`
 );
 
 // 关注直播概览（无 Cookie 时应给出登录提示）
@@ -110,7 +111,7 @@ const boardOk =
   platformCards === 0 &&
   siteTrigger === 1 &&
   siteOptionCount === 3 &&
-  bilibiliOptionDisabled &&
+  siteOptionsEnabled &&
   Boolean(liveCardText);
 await page.screenshot({ path: resolve(shotDir, 'home-board.png') });
 
@@ -190,11 +191,13 @@ console.log(
   `✅ 操作栏直播计时: ${timerText || '无'} → ${timerTextNext || '无'}（走动=${timerText !== timerTextNext}）`
 );
 
-// 收藏当前博主（供「收藏」页验证）
-await page.locator('[data-testid="room-favorite"]').click();
-const favoriteLabel = (
-  await page.locator('[data-testid="room-favorite"]').textContent()
-)?.trim();
+// 收藏当前博主（供「收藏」页验证）：收藏持久化在 localStorage，重复跑时可能已是「已收藏」，
+// 此时再点会取消收藏导致收藏页为空，所以先读状态、只在未收藏时点击
+const favoriteButton = page.locator('[data-testid="room-favorite"]');
+if ((await favoriteButton.textContent())?.trim() !== '已收藏') {
+  await favoriteButton.click();
+}
+const favoriteLabel = (await favoriteButton.textContent())?.trim();
 console.log(`✅ 收藏按钮: ${favoriteLabel}（应为「已收藏」）`);
 
 // 3. 播放与弹幕
@@ -332,8 +335,9 @@ console.log(
 // 5. 房间页返回键 + 收藏 / 历史 / 我的 / 设置页
 console.log('\n=== 5. 页面导航 ===');
 await page.locator('[data-testid="room-back"]').click();
-await page.waitForSelector(liveCard, { timeout: 20000 });
-console.log('✅ 房间页返回键回到首页');
+// 上一步是「收藏」页经侧栏品牌图标（push）回到直播间，返回键按历史后退即回到该页
+await page.waitForSelector('h1:has-text("收藏")', { timeout: 20000 });
+console.log('✅ 房间页返回键回到上一页（收藏）');
 
 await page.locator('[data-testid="nav-favorites"]').click();
 await page.waitForSelector('h1:has-text("收藏")', { timeout: 10000 });
@@ -505,7 +509,7 @@ console.log(
     `直播状态: ${historyLive || '未返回'}，行内图标 ${historyIcons} 个）`
 );
 const historyOk =
-  historyTabCount === 3 &&
+  historyTabCount === 4 &&
   bilibiliCount === 0 &&
   historyCount > 0 &&
   Boolean(historyPlatform) &&
